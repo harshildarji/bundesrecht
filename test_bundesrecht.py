@@ -1,5 +1,4 @@
 import pytest
-
 from bundesrecht import Bundesrecht, normalise, parse_reference
 
 

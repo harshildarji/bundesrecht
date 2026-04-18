@@ -39,11 +39,21 @@ class LawData:
         self.sections: dict = data.get("sections", {})
         self._index: dict[str, dict] = {}
         self._key_map: dict[str, str] = {}
-        for key, val in self.sections.items():
-            norm = _normalise_section_key(key)
-            if norm:
-                self._index[norm] = val
-                self._key_map[norm] = key
+        # sections is a list of dicts with a "paragraf" key
+        if isinstance(self.sections, list):
+            for sec in self.sections:
+                key = sec.get("paragraf", "")
+                norm = _normalise_section_key(key)
+                if norm:
+                    self._index[norm] = sec
+                    self._key_map[norm] = key
+        else:
+            # legacy dict format
+            for key, val in self.sections.items():
+                norm = _normalise_section_key(key)
+                if norm:
+                    self._index[norm] = val
+                    self._key_map[norm] = key
 
     def get_section(self, paragraph: str) -> Optional[dict]:
         """Retrieve a section by normalised paragraph number (e.g. '312', '312a')."""
