@@ -1,10 +1,9 @@
 # bundesrecht
 
-Python package for parsing and resolving German federal law references.
+Python package for parsing, normalising, and resolving German federal law references.
 
 Zero dependencies. Pure Python 3.10+.
 
----
 
 ## Installation
 
@@ -128,7 +127,6 @@ Number of distinct laws loaded.
 lib.law_count   # → 6867
 ```
 
----
 
 ## QueryResult
 
