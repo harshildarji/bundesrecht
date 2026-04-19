@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pytest huggingface_hub
+
+      - name: Download gesetze.jsonl
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -c "
+          from huggingface_hub import hf_hub_download
+          import os
+          hf_hub_download(
+              repo_id='harshildarji/bundesrecht',
+              filename='gesetze.jsonl',
+              repo_type='dataset',
+              token=os.environ['HF_TOKEN'],
+              local_dir='.',
+          )
+          "
+
+      - name: Run tests
+        run: pytest test_bundesrecht.py -v --jsonl gesetze.jsonl
