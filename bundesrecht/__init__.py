@@ -23,16 +23,12 @@ Public API:
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Union, Optional
 
 from bundesrecht.lookup import LawData, LawLibrary, QueryResult
 from bundesrecht.normaliser import normalise
-from bundesrecht.references import (
-    LawReference,
-    ParagraphRef,
-    SubReference,
-    parse_reference,
-)
+from bundesrecht.references import (LawReference, ParagraphRef, SubReference,
+                                    parse_reference)
 
 
 class Bundesrecht:
@@ -51,7 +47,7 @@ class Bundesrecht:
         ['§ 312 BGB', '§ 355 BGB']
     """
 
-    def __init__(self, jsonl_path: str | Path):
+    def __init__(self, jsonl_path: Union[str, Path]):
         self._library = LawLibrary(str(jsonl_path))
 
     # normalisation (no lookup)

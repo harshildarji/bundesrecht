@@ -251,14 +251,137 @@ def test_query_gg_paragraph_1_not_found(lib):
 
 
 # query - multi-target expansion
-
-
 def test_query_multi_target_expands(lib):
     r = lib.query("§ 2 Abs. 1 Nr. 1, Nr. 7, Abs. 2 UrhG")
     assert len(r) == 3
     assert r[0].resolved_depth == "nummer"
     assert r[1].resolved_depth == "nummer"
     assert r[2].resolved_depth == "absatz"
+
+
+# normalise - Art. / Artikel refs
+def test_normalise_art_simple():
+    assert normalise("Art. 1 GG") == ["Art. 1 GG"]
+
+
+def test_normalise_art_with_abs():
+    assert normalise("Art. 20 Abs. 3 GG") == ["Art. 20 Abs. 3 GG"]
+
+
+def test_normalise_artikel_full_word():
+    assert normalise("Artikel 14 GG") == ["Art. 14 GG"]
+
+
+def test_normalise_art_with_nr():
+    assert normalise("Art. 74 Abs. 1 Nr. 1 GG") == ["Art. 74 Abs. 1 Nr. 1 GG"]
+
+
+# query - Art. resolution against GG
+def test_query_art_gg_1(lib):
+    r = lib.query("Art. 1 GG")
+    assert len(r) == 1
+    assert r[0].resolved_depth == "section"
+
+
+def test_query_art_gg_20_abs_3(lib):
+    r = lib.query("Art. 20 Abs. 3 GG")
+    assert len(r) == 1
+    assert r[0].resolved_depth == "absatz"
+
+
+def test_query_art_gg_section_text_present(lib):
+    r = lib.query("Art. 1 GG")
+    text = r[0].full_text()
+    assert "(1) Die Würde des Menschen ist unantastbar." in text
+    assert "(2) Das Deutsche Volk bekennt sich" in text
+    assert "(3) Die nachfolgenden Grundrechte binden" in text
+
+
+# parse_reference - Art. / Artikel
+def test_parse_art_simple():
+    r = parse_reference("Art. 1 GG")
+    assert r.is_art is True
+    assert len(r.paragraphs) == 1
+    assert r.paragraphs[0].paragraph == "1"
+    assert r.law == "GG"
+
+
+def test_parse_artikel_full_word():
+    r = parse_reference("Artikel 20 GG")
+    assert r.is_art is True
+    assert r.paragraphs[0].paragraph == "20"
+    assert r.law == "GG"
+
+
+def test_parse_art_with_abs():
+    r = parse_reference("Art. 20 Abs. 3 GG")
+    assert r.is_art is True
+    assert r.paragraphs[0].paragraph == "20"
+    assert r.paragraphs[0].sub_refs[0].level == "Abs"
+    assert r.paragraphs[0].sub_refs[0].number == "3"
+
+
+def test_parse_art_with_abs_nr():
+    r = parse_reference("Art. 74 Abs. 1 Nr. 1 GG")
+    assert r.is_art is True
+    assert r.paragraphs[0].paragraph == "74"
+    assert r.paragraphs[0].sub_refs[0].level == "Abs"
+    assert r.paragraphs[0].sub_refs[1].level == "Nr"
+
+
+def test_parse_art_str_output():
+    r = parse_reference("Art. 1 GG")
+    assert str(r) == "Art. 1 GG"
+
+
+def test_parse_art_str_with_sub_refs():
+    r = parse_reference("Art. 20 Abs. 3 GG")
+    assert str(r) == "Art. 20 Abs. 3 GG"
+
+
+# parse_reference - malformed / edge cases
+def test_parse_empty_string():
+    r = parse_reference("")
+    assert r.paragraphs == []
+    assert r.law is None
+
+
+def test_parse_whitespace_only():
+    r = parse_reference("   ")
+    assert r.paragraphs == []
+
+
+def test_parse_no_paragraph_sign():
+    r = parse_reference("BGB")
+    assert r.paragraphs == []
+
+
+def test_parse_paragraph_sign_only():
+    r = parse_reference("§")
+    assert r.paragraphs == []
+
+
+def test_parse_paragraph_sign_no_number():
+    r = parse_reference("§ BGB")
+    assert r.paragraphs == []
+
+
+def test_parse_art_no_number():
+    r = parse_reference("Art. GG")
+    assert r.paragraphs == []
+
+
+def test_normalise_empty_string():
+    assert normalise("") == []
+
+
+def test_normalise_whitespace_only():
+    assert normalise("   ") == []
+
+
+def test_normalise_garbage():
+    result = normalise("xyz 123 abc")
+    assert isinstance(result, list)
 
 
 def test_query_section_betrug_stgb(lib):

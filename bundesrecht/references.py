@@ -88,9 +88,13 @@ class LawReference:
     paragraphs: list[ParagraphRef]
     law: Optional[str] = None  # 'BGB', 'ZPO', etc.
     raw: str = ""
+    is_art: bool = False  # True when parsed from Art./Artikel prefix
 
     def __str__(self) -> str:
-        prefix = "§§" if len(self.paragraphs) > 1 else "§"
+        if self.is_art:
+            prefix = "Art."
+        else:
+            prefix = "§§" if len(self.paragraphs) > 1 else "§"
         para_str = ", ".join(str(p) for p in self.paragraphs)
         law_str = f" {self.law}" if self.law else ""
         return f"{prefix} {para_str}{law_str}"
@@ -338,6 +342,7 @@ def _parse_reference(ref_string: str) -> LawReference:
     if pos >= n:
         return LawReference(paragraphs=[], law=None, raw=raw)
 
+    is_art = False
     multi = False
     if tokens[pos] in ("§§", "§"):
         multi = tokens[pos] == "§§"
@@ -350,6 +355,18 @@ def _parse_reference(ref_string: str) -> LawReference:
         pos += 1
     elif tokens[pos].startswith("§"):
         rest = tokens[pos][1:]
+        if rest:
+            tokens.insert(pos + 1, rest)
+        pos += 1
+    elif re.match(r"^Artike?l?\.?$", tokens[pos], re.IGNORECASE):
+        is_art = True
+        pos += 1
+    elif re.match(r"^Art\.?$", tokens[pos], re.IGNORECASE):
+        is_art = True
+        pos += 1
+    elif re.match(r"^Art\.?\d", tokens[pos], re.IGNORECASE):
+        is_art = True
+        rest = re.sub(r"^Art\.?", "", tokens[pos])
         if rest:
             tokens.insert(pos + 1, rest)
         pos += 1
@@ -378,7 +395,7 @@ def _parse_reference(ref_string: str) -> LawReference:
                 law = candidate
                 break
 
-    return LawReference(paragraphs=paragraphs, law=law, raw=raw)
+    return LawReference(paragraphs=paragraphs, law=law, raw=raw, is_art=is_art)
 
 
 # Data Access Layer

@@ -258,7 +258,7 @@ def _parse_and_expand(raw: str) -> list[LawReference]:
         expanded_paragraphs.extend(_expand_multi_target(para))
 
     return [
-        LawReference(paragraphs=[para], law=ref.law, raw=raw)
+        LawReference(paragraphs=[para], law=ref.law, raw=raw, is_art=ref.is_art)
         for para in expanded_paragraphs
     ]
 
@@ -308,12 +308,14 @@ def _reconstruct(ref: LawReference) -> str:
     """Reconstruct a clean canonical reference string from a LawReference.
 
     Output format: '§ {para} {sub_refs...} {law}', e.g. '§ 2 Abs. 1 Nr. 1 UrhG'
+    For Art.-based refs: 'Art. {para} {sub_refs...} {law}'
     """
     if not ref.paragraphs:
         return ref.raw
 
     para = ref.paragraphs[0]
-    parts = [f"§ {para.paragraph}"]
+    prefix = "Art." if ref.is_art else "§"
+    parts = [f"{prefix} {para.paragraph}"]
 
     if para.range_end:
         parts.append(f"bis {para.range_end}")

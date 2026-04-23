@@ -14,14 +14,10 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Union
 
-from bundesrecht.references import (
-    LawReference,
-    ParagraphRef,
-    SubReference,
-    _expand_multi_target,
-)
+from bundesrecht.references import (LawReference, ParagraphRef, SubReference,
+                                    _expand_multi_target)
 
 
 class LawData:
@@ -56,10 +52,13 @@ class LawData:
                     self._key_map[norm] = key
 
     def get_section(self, paragraph: str) -> Optional[dict]:
-        """Retrieve a section by normalised paragraph number (e.g. '312', '312a')."""
-        return self._index.get(paragraph.lower().lstrip("0") or "0")
+        """Retrieve a section by normalised paragraph number (e.g. '312', 'art_20')."""
+        key = paragraph.lower()
+        if key.startswith("art_"):
+            return self._index.get(key)
+        return self._index.get(key.lstrip("0") or "0")
 
-    def get_absatz(self, paragraph: str, absatz: int | str) -> Optional[dict]:
+    def get_absatz(self, paragraph: str, absatz: Union[int, str]) -> Optional[dict]:
         """Get a specific Absatz from a section.
 
         Args:
@@ -114,7 +113,7 @@ class LawData:
         return None
 
     def get_nummer(
-        self, paragraph: str, absatz: Optional[int | str], nummer: int
+        self, paragraph: str, absatz: Optional[Union[int, str]], nummer: int
     ) -> Optional[dict]:
         """Get a specific Nummer item from an Absatz.
 
@@ -143,7 +142,7 @@ class LawData:
         return None
 
     def get_buchstabe(
-        self, paragraph: str, absatz: Optional[int | str], nummer: int, buchstabe: str
+        self, paragraph: str, absatz: Optional[Union[int, str]], nummer: int, buchstabe: str
     ) -> Optional[str]:
         """Get a specific Buchstabe text from within a Nummer.
 
@@ -169,7 +168,7 @@ class LawData:
 
 
 def _normalise_section_key(key: str) -> Optional[str]:
-    """Convert section dict keys like '§ 312', '§ 312a' to a simple normalised form.
+    """Convert section dict keys like '§ 312', 'Art 20' to a simple normalised form.
 
     Returns None if the key does not represent a single addressable paragraph.
     """
@@ -179,6 +178,10 @@ def _normalise_section_key(key: str) -> Optional[str]:
     if m:
         num = m.group(1).lstrip("0") or "0"
         return num.lower()
+    m = re.match(r"^Art\.?\s*(\d+[a-z]?)", key, re.IGNORECASE)
+    if m:
+        num = m.group(1).lstrip("0") or "0"
+        return f"art_{num.lower()}"
     return None
 
 
@@ -203,6 +206,9 @@ def _split_sentences(text: str) -> list[str]:
         "usw.",
         "z.B.",
         "d.h.",
+        "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.",
+        "10.", "11.", "12.", "13.", "14.", "15.", "16.", "17.", "18.", "19.", "20.",
+        "21.", "22.", "23.", "24.", "25.", "26.", "27.", "28.", "29.", "30.", "31.",
     ]
     protected = text
     for i, abbr in enumerate(abbrevs):
@@ -378,7 +384,7 @@ class LawLibrary:
         >>> results = lib.query("§ 312 Abs. 2 BGB")
     """
 
-    def __init__(self, path: str | Path):
+    def __init__(self, path: Union[str, Path]):
         self._laws: dict[str, LawData] = {}
         self._load(Path(path))
 
@@ -446,7 +452,8 @@ class LawLibrary:
         law_data: LawData,
         para_ref: ParagraphRef,
     ) -> QueryResult:
-        section = law_data.get_section(para_ref.paragraph)
+        para_key = f"art_{para_ref.paragraph.lower()}" if ref.is_art else para_ref.paragraph
+        section = law_data.get_section(para_key)
 
         absatz_data = None
         satz_text = None
@@ -477,18 +484,19 @@ class LawLibrary:
 
         if not section:
             if para_ref.paragraph:
-                resolution_note = f"§ {para_ref.paragraph} not found in {ref.law}"
+                resolution_note = f"Art. {para_ref.paragraph} not found in {ref.law}" if ref.is_art else f"§ {para_ref.paragraph} not found in {ref.law}"
         else:
             resolved_depth = "section"
 
             if abs_num is not None:
-                absatz_data = law_data.get_absatz(para_ref.paragraph, abs_num)
+                absatz_data = law_data.get_absatz(para_key, abs_num)
                 if absatz_data:
                     resolved_depth = "absatz"
                 else:
+                    pref = "Art." if ref.is_art else "§"
                     resolution_note = (
                         f"Abs. {abs_num} not found in "
-                        f"§ {para_ref.paragraph} - resolved to § {para_ref.paragraph}"
+                        f"{pref} {para_ref.paragraph} - resolved to {pref} {para_ref.paragraph}"
                     )
             elif section.get("content"):
                 absatz_data = (
@@ -500,40 +508,43 @@ class LawLibrary:
             if absatz_data and satz_num is not None:
                 try:
                     satz_text = law_data.get_satz(
-                        para_ref.paragraph, abs_num, int(satz_num)
+                        para_key, abs_num, int(satz_num)
                     )
                     if satz_text:
                         resolved_depth = "satz"
                     else:
+                        pref = "Art." if ref.is_art else "§"
                         resolution_note = (
                             f"Satz {satz_num} not found in "
-                            f"§ {para_ref.paragraph} Abs. {abs_num} - "
+                            f"{pref} {para_ref.paragraph} Abs. {abs_num} - "
                             f"resolved to Abs. {abs_num}"
                         )
                 except (ValueError, TypeError):
                     pass
 
             if absatz_data and nr_num is not None:
-                nummer_text = law_data.get_nummer(para_ref.paragraph, abs_num, nr_num)
+                nummer_text = law_data.get_nummer(para_key, abs_num, nr_num)
                 if nummer_text is not None:
                     resolved_depth = "nummer"
                     if buchst_num is not None:
                         buchst_text = law_data.get_buchstabe(
-                            para_ref.paragraph, abs_num, nr_num, buchst_num
+                            para_key, abs_num, nr_num, buchst_num
                         )
                         if buchst_text is not None:
                             nummer_text = buchst_text
                             resolved_depth = "buchstabe"
                         else:
+                            pref = "Art." if ref.is_art else "§"
                             resolution_note = (
                                 f"Buchst. {buchst_num} not found in "
-                                f"§ {para_ref.paragraph} Abs. {abs_num} Nr. {nr_num} - "
+                                f"{pref} {para_ref.paragraph} Abs. {abs_num} Nr. {nr_num} - "
                                 f"resolved to Nr. {nr_num}"
                             )
                 else:
+                    pref = "Art." if ref.is_art else "§"
                     resolution_note = (
                         f"Nr. {nr_num} not found in "
-                        f"§ {para_ref.paragraph} Abs. {abs_num} - "
+                        f"{pref} {para_ref.paragraph} Abs. {abs_num} - "
                         f"resolved to Abs. {abs_num}"
                     )
 
