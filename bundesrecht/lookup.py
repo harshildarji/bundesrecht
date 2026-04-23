@@ -16,8 +16,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, Union
 
-from bundesrecht.references import (LawReference, ParagraphRef, SubReference,
-                                    _expand_multi_target)
+from bundesrecht.references import (
+    LawReference,
+    ParagraphRef,
+    SubReference,
+    _expand_multi_target,
+)
 
 
 class LawData:
@@ -142,7 +146,11 @@ class LawData:
         return None
 
     def get_buchstabe(
-        self, paragraph: str, absatz: Optional[Union[int, str]], nummer: int, buchstabe: str
+        self,
+        paragraph: str,
+        absatz: Optional[Union[int, str]],
+        nummer: int,
+        buchstabe: str,
     ) -> Optional[str]:
         """Get a specific Buchstabe text from within a Nummer.
 
@@ -206,9 +214,37 @@ def _split_sentences(text: str) -> list[str]:
         "usw.",
         "z.B.",
         "d.h.",
-        "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.",
-        "10.", "11.", "12.", "13.", "14.", "15.", "16.", "17.", "18.", "19.", "20.",
-        "21.", "22.", "23.", "24.", "25.", "26.", "27.", "28.", "29.", "30.", "31.",
+        "1.",
+        "2.",
+        "3.",
+        "4.",
+        "5.",
+        "6.",
+        "7.",
+        "8.",
+        "9.",
+        "10.",
+        "11.",
+        "12.",
+        "13.",
+        "14.",
+        "15.",
+        "16.",
+        "17.",
+        "18.",
+        "19.",
+        "20.",
+        "21.",
+        "22.",
+        "23.",
+        "24.",
+        "25.",
+        "26.",
+        "27.",
+        "28.",
+        "29.",
+        "30.",
+        "31.",
     ]
     protected = text
     for i, abbr in enumerate(abbrevs):
@@ -452,7 +488,9 @@ class LawLibrary:
         law_data: LawData,
         para_ref: ParagraphRef,
     ) -> QueryResult:
-        para_key = f"art_{para_ref.paragraph.lower()}" if ref.is_art else para_ref.paragraph
+        para_key = (
+            f"art_{para_ref.paragraph.lower()}" if ref.is_art else para_ref.paragraph
+        )
         section = law_data.get_section(para_key)
 
         absatz_data = None
@@ -484,7 +522,11 @@ class LawLibrary:
 
         if not section:
             if para_ref.paragraph:
-                resolution_note = f"Art. {para_ref.paragraph} not found in {ref.law}" if ref.is_art else f"§ {para_ref.paragraph} not found in {ref.law}"
+                resolution_note = (
+                    f"Art. {para_ref.paragraph} not found in {ref.law}"
+                    if ref.is_art
+                    else f"§ {para_ref.paragraph} not found in {ref.law}"
+                )
         else:
             resolved_depth = "section"
 
@@ -507,9 +549,7 @@ class LawLibrary:
 
             if absatz_data and satz_num is not None:
                 try:
-                    satz_text = law_data.get_satz(
-                        para_key, abs_num, int(satz_num)
-                    )
+                    satz_text = law_data.get_satz(para_key, abs_num, int(satz_num))
                     if satz_text:
                         resolved_depth = "satz"
                     else:

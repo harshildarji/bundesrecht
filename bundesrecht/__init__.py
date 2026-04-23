@@ -23,12 +23,16 @@ Public API:
 """
 
 from pathlib import Path
-from typing import Union, Optional
+from typing import Optional, Union
 
 from bundesrecht.lookup import LawData, LawLibrary, QueryResult
 from bundesrecht.normaliser import normalise
-from bundesrecht.references import (LawReference, ParagraphRef, SubReference,
-                                    parse_reference)
+from bundesrecht.references import (
+    LawReference,
+    ParagraphRef,
+    SubReference,
+    parse_reference,
+)
 
 
 class Bundesrecht:
