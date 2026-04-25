@@ -56,11 +56,38 @@ def test_normalise_ff():
     assert normalise("§ 312 ff. BGB") == ["§ 312 BGB", "§ 313 BGB", "§ 314 BGB"]
 
 
-@pytest.mark.xfail(
-    reason="law dropped when § glued to number: '§312 BGB' → ['§ 312'] instead of ['§ 312 BGB']"
-)
 def test_normalise_no_space_between_paragraph_sign_and_number():
     assert normalise("§312 BGB") == ["§ 312 BGB"]
+
+
+def test_normalise_no_space_letter_suffix():
+    assert normalise("§312a BGB") == ["§ 312a BGB"]
+
+
+def test_normalise_no_space_multi_paragraph():
+    assert normalise("§§312,313 BGB") == ["§ 312 BGB", "§ 313 BGB"]
+
+
+def test_normalise_no_space_single_digit():
+    assert normalise("§1 BGB") == ["§ 1 BGB"]
+
+
+def test_normalise_no_space_art():
+    assert normalise("Art.20 GG") == ["Art. 20 GG"]
+
+
+def test_parse_no_space_law_preserved():
+    r = parse_reference("§133 StGB")
+    assert r.paragraphs[0].paragraph == "133"
+    assert r.law == "StGB"
+
+
+def test_parse_no_space_with_sub_ref():
+    r = parse_reference("§433 Abs. 1 BGB")
+    assert r.paragraphs[0].paragraph == "433"
+    assert r.paragraphs[0].sub_refs[0].level == "Abs"
+    assert r.paragraphs[0].sub_refs[0].number == "1"
+    assert r.law == "BGB"
 
 
 # parse_reference

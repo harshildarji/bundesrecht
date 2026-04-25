@@ -401,6 +401,9 @@ def _parse_reference(ref_string: str) -> LawReference:
             tokens.insert(pos + 1, rest)
         pos += 1
 
+    # recalculate n after any token insertions in the prefix-handling block above
+    n = len(tokens)
+
     para, pos = _parse_paragraph_block(tokens, pos)
     if para:
         paragraphs.append(para)
