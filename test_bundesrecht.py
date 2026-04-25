@@ -200,7 +200,6 @@ def test_query_absatz_arbgg_1(lib):
 
 # query - satz level
 def test_query_satz_bgb_433_abs1_satz1(lib):
-    # known issues: (1) Absatz prefix leaks into Satz text; trailing period stripped by sentence splitter
     r = lib.query("§ 433 Abs. 1 Satz 1 BGB")
     assert r[0].resolved_depth == "satz"
     assert "Durch den Kaufvertrag" in r[0].full_text()
@@ -382,6 +381,43 @@ def test_normalise_whitespace_only():
 def test_normalise_garbage():
     result = normalise("xyz 123 abc")
     assert isinstance(result, list)
+
+
+# prefix stripping
+def test_absatz_prefix_stripped(lib):
+    r = lib.query("§ 433 Abs. 1 BGB")
+    text = r[0].full_text()
+    assert not text.startswith("(1)")
+    assert "Durch den Kaufvertrag" in text
+
+
+def test_satz_prefix_stripped(lib):
+    r = lib.query("§ 433 Abs. 1 Satz 1 BGB")
+    text = r[0].full_text()
+    assert not text.startswith("(1)")
+    assert "Durch den Kaufvertrag" in text
+
+
+def test_nummer_prefix_stripped(lib):
+    r = lib.query("§ 2 Abs. 1 Nr. 1 UrhG")
+    text = r[0].full_text()
+    assert not text.startswith("1.")
+    assert "Sprachwerke" in text
+
+
+def test_buchstabe_prefix_stripped(lib):
+    r = lib.query("§ 81 Abs. 1 Nr. 1 Buchst. a BGB")
+    text = r[0].full_text()
+    assert not text.startswith("a)")
+    assert "Zweck der Stiftung" in text
+
+
+def test_section_prefixes_preserved(lib):
+    # at section depth prefixes should NOT be stripped
+    r = lib.query("§ 433 BGB")
+    text = r[0].full_text()
+    assert "(1)" in text
+    assert "(2)" in text
 
 
 def test_query_section_betrug_stgb(lib):

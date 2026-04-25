@@ -111,6 +111,7 @@ class LawData:
             return None
 
         text = abs_data.get("absatz", "") or abs_data.get("satz", "")
+        text = re.sub(r"^\(\d+\w*\)\s*", "", text)
         sentences = _split_sentences(text)
         if 1 <= satz <= len(sentences):
             return sentences[satz - 1]
@@ -263,6 +264,19 @@ def _split_sentences(text: str) -> list[str]:
     return [s for s in sentences if s]
 
 
+def _strip_leaf_prefix(text: str, depth: str) -> str:
+    """Strip leading notation prefix only at the resolved leaf level."""
+    if not text:
+        return text
+    if depth == "absatz":
+        text = re.sub(r"^\(\d+\w*\)\s*", "", text)
+    elif depth == "nummer":
+        text = re.sub(r"^\d+\.\s*", "", text)
+    elif depth == "buchstabe":
+        text = re.sub(r"^[a-z]\)\s*", "", text, flags=re.IGNORECASE)
+    return text.strip()
+
+
 def _assemble_absatz(c: dict) -> str:
     """Assemble the full text of a content item.
 
@@ -310,14 +324,12 @@ class QueryResult:
             return self.satz_text
         if self.nummer_text:
             if isinstance(self.nummer_text, str):
-                return self.nummer_text
+                return _strip_leaf_prefix(self.nummer_text, "buchstabe")
             if isinstance(self.nummer_text, dict):
                 nr_text = self.nummer_text.get("text", "")
-                if self.resolution_note:
-                    return nr_text
                 parts = []
                 if nr_text:
-                    parts.append(nr_text)
+                    parts.append(_strip_leaf_prefix(nr_text, "nummer"))
                 for buch in self.nummer_text.get("buchstaben", []):
                     buch_text = (
                         buch.get("text", "") if isinstance(buch, dict) else str(buch)
@@ -326,7 +338,7 @@ class QueryResult:
                         parts.append(buch_text)
                 return " ".join(parts)
         if self.absatz_data:
-            return _assemble_absatz(self.absatz_data)
+            return _strip_leaf_prefix(_assemble_absatz(self.absatz_data), "absatz")
         if self.section:
             content = self.section.get("content", [])
             return "\n\n".join(_assemble_absatz(c) for c in content)
@@ -339,26 +351,28 @@ class QueryResult:
         return ""
 
     def normkette(self) -> str:
-        """Return the full normative chain from Absatz down to the resolved leaf.
+        """Return the normative chain leading to the resolved leaf.
 
-        Each level is separated by ' → ' showing the traceable path of conditions
-        that leads to the specific legal conclusion.
-
-        Examples:
-            For '§ 327e Abs. 2 Nr. 1 Buchst. a BGB':
-            '(2) Das digitale Produkt entspricht... → 1. das digitale Produkt → a) ...'
+        Only meaningful at nummer/buchstabe depth. Each level separated by ' → '.
         """
         parts = []
 
-        if self.absatz_data:
+        if self.absatz_data is not None and self.nummer_text is not None:
             lead = self.absatz_data.get("absatz", "") or self.absatz_data.get(
                 "satz", ""
             )
             if lead:
-                parts.append(lead)
+                parts.append(_strip_leaf_prefix(lead.rstrip(":").strip(), "absatz"))
 
         if self.nummer_text is not None:
-            if isinstance(self.nummer_text, str):
+            if isinstance(self.nummer_text, dict):
+                nr_text = self.nummer_text.get("text", "")
+                if nr_text:
+                    parts.append(
+                        _strip_leaf_prefix(nr_text, "nummer")
+                    )  # buchstaben rendered by caller
+
+            elif isinstance(self.nummer_text, str):
                 if self.absatz_data:
                     nr_ref = None
                     for sr in (
@@ -375,18 +389,11 @@ class QueryResult:
                         nummern = self.absatz_data.get("nummer", [])
                         if 1 <= nr_ref <= len(nummern):
                             nr_dict = nummern[nr_ref - 1]
-                            nr_lead = (
-                                nr_dict.get("text", "")
-                                if isinstance(nr_dict, dict)
-                                else ""
-                            )
-                            if nr_lead:
-                                parts.append(nr_lead)
-                parts.append(self.nummer_text)
-            elif isinstance(self.nummer_text, dict):
-                nr_lead = self.nummer_text.get("text", "")
-                if nr_lead:
-                    parts.append(nr_lead)
+                            if isinstance(nr_dict, dict):
+                                nr_lead = nr_dict.get("text", "")
+                                if nr_lead:
+                                    parts.append(_strip_leaf_prefix(nr_lead, "nummer"))
+                parts.append(_strip_leaf_prefix(self.nummer_text, "buchstabe"))
 
         if not parts:
             return self.full_text()
