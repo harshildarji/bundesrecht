@@ -247,6 +247,32 @@ def _expand_range(raw: str) -> list[str]:
     return [f"§ {n} {suffix}".strip() for n in range(start, end + 1)]
 
 
+def _expand_f_ff(para: ParagraphRef, law: str, is_art: bool) -> list[LawReference]:
+    """Expand f. and ff. continuation markers into individual paragraph refs.
+
+    Legal meaning:
+        f.  (und folgende) = that paragraph and the next one  -> exactly 2 paragraphs
+        ff. (und fortfolgende) = that paragraph and the following ones -> conventionally 3
+
+    Only applies to pure numeric paragraph numbers.
+    """
+    if not (para.is_f or para.is_ff) or not para.paragraph.isdigit():
+        return []
+    base = int(para.paragraph)
+    count = 2 if para.is_f else 3
+    refs = []
+    for n in range(base, base + count):
+        expanded_para = ParagraphRef(
+            paragraph=str(n),
+            sub_refs=para.sub_refs,
+            ivm_refs=para.ivm_refs,
+        )
+        refs.append(
+            LawReference(paragraphs=[expanded_para], law=law, raw="", is_art=is_art)
+        )
+    return refs
+
+
 def _parse_and_expand(raw: str) -> list[LawReference]:
     """Parse a raw string and expand any multi-target ParagraphRefs."""
     ref = _parse_reference(raw)
@@ -255,6 +281,10 @@ def _parse_and_expand(raw: str) -> list[LawReference]:
 
     expanded_paragraphs: list[ParagraphRef] = []
     for para in ref.paragraphs:
+        # expand f./ff. into individual paragraph refs
+        ff_expanded = _expand_f_ff(para, ref.law or "", ref.is_art)
+        if ff_expanded:
+            return ff_expanded
         expanded_paragraphs.extend(_expand_multi_target(para))
 
     return [
@@ -339,11 +369,71 @@ def _reconstruct(ref: LawReference) -> str:
 
 
 def _expand_abbreviations(raw: str) -> str:
-    """Expand common shorthand before parsing.
+    """Expand common shorthand and fix encoding issues before parsing.
 
-    S. N → Satz N  (only when followed by a digit, to avoid matching law abbrevs)
+    - Fixes mojibake sequences (√§→ä, √ü→ü, √ú→ü, √∂→ö) from broken UTF-8
+    - Expands plural level keywords: Sätze→Satz, Absätze→Absatz
+    - Expands S. N → Satz N (only when followed by a digit)
+    - Expands Ab. / Ab  → Abs. (typo shorthand for Absatz)
+    - Expands Ziffer / Ziff. → Nr. (synonym for Nummer)
+    - Expands Roman numeral Absatz shorthand: § N I N → § N Abs. 1 N
+      e.g. § 62 I 2 AufenthG → § 62 Abs. 1 Satz 2 AufenthG
+    - Expands word number "eins" → "1" in Satz context
     """
+    # fix mojibake
+    raw = (
+        raw.replace("√§", "ä").replace("√ü", "ü").replace("√ú", "ü").replace("√∂", "ö")
+    )
+    # plural level keywords → singular so parser recognises them
+    raw = re.sub(r"\bSätze\b", "Satz", raw)
+    raw = re.sub(r"\bAbsätze\b", "Absatz", raw)
+    # Ab. / Ab shorthand for Abs.
+    raw = re.sub(r"\bAb\.\s*(?=\d)", "Abs. ", raw)
+    raw = re.sub(r"\bAb\s+(?=\d)", "Abs. ", raw)
+    # Ziffer / Ziff. → Nr.
+    raw = re.sub(r"\bZiff(?:er)?\.?\s*(?=\d)", "Nr. ", raw, flags=re.IGNORECASE)
+    # S. N → Satz N
     raw = re.sub(r"(?<![A-Z])S[.]\s*(?=\d)", "Satz ", raw)
+    # "Satz eins" → "Satz 1"
+    raw = re.sub(r"\bSatz\s+eins\b", "Satz 1", raw, flags=re.IGNORECASE)
+    # Roman numeral Absatz shorthand: § N {I|II|III|IV|V} N LAW
+    # matches a Roman numeral standing alone between the paragraph number and a digit/law
+    # e.g. § 62 I 2 AufenthG → § 62 Abs. 1 Satz 2 AufenthG
+    _ROMAN = {
+        "I": 1,
+        "II": 2,
+        "III": 3,
+        "IV": 4,
+        "V": 5,
+        "VI": 6,
+        "VII": 7,
+        "VIII": 8,
+        "IX": 9,
+    }
+
+    def _expand_roman(m: re.Match) -> str:
+        roman = m.group(1)
+        after = m.group(2)  # what follows the Roman numeral
+        absatz_n = _ROMAN.get(roman.upper(), 0)
+        if not absatz_n:
+            return m.group(0)
+        result = f"Abs. {absatz_n}"
+        if after and re.match(r"\d", after.strip()):
+            result += f" Satz {after.strip()}"
+            return result
+        return result
+
+    raw = re.sub(
+        r"(\b\d+[a-z]?)\s+(I{1,3}|IV|VI{0,3}|VIII|IX)\b"
+        r"(\s+\d+)?(?=\s*(?:Nr\.|Nrn\.|Satz|[A-ZÄÖÜ]|$))",
+        lambda m: (
+            m.group(1)
+            + " Abs. "
+            + str(_ROMAN.get(m.group(2).upper(), m.group(2)))
+            + (" Satz " + m.group(3).strip() if m.group(3) else "")
+        ),
+        raw,
+    )
     return raw
 
 

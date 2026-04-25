@@ -53,7 +53,7 @@ def test_normalise_satz_shorthand():
 
 
 def test_normalise_ff():
-    assert normalise("§ 312 ff. BGB") == ["§ 312 ff. BGB"]
+    assert normalise("§ 312 ff. BGB") == ["§ 312 BGB", "§ 313 BGB", "§ 314 BGB"]
 
 
 @pytest.mark.xfail(
@@ -424,3 +424,203 @@ def test_query_section_betrug_stgb(lib):
     r = lib.query("§ 263 StGB")
     assert r[0].titel() == "Betrug"
     assert "Vermögensvorteil" in r[0].full_text()
+
+
+# sub-ref und/bis expansion
+def test_normalise_abs_und():
+    result = normalise("Art. 29 Abs. 1 und 2 Dublin-III-VO")
+    absaetze = set()
+    for r in result:
+        p = parse_reference(r)
+        for para in p.paragraphs:
+            for sr in para.sub_refs:
+                if sr.level == "Abs":
+                    absaetze.add(sr.number)
+    assert absaetze == {"1", "2"}
+
+
+def test_normalise_nr_und():
+    result = normalise("§ 88 Abs. 3 Nr. 1 und 2 BayEUG")
+    nummern = set()
+    for r in result:
+        p = parse_reference(r)
+        for para in p.paragraphs:
+            for sr in para.sub_refs:
+                if sr.level == "Nr":
+                    nummern.add(sr.number)
+    assert nummern == {"1", "2"}
+
+
+def test_normalise_abs_bis_range():
+    result = normalise("§ 123 Abs. 1 bis 3 VwGO")
+    absaetze = set()
+    for r in result:
+        p = parse_reference(r)
+        for para in p.paragraphs:
+            for sr in para.sub_refs:
+                if sr.level == "Abs":
+                    absaetze.add(sr.number)
+    assert absaetze == {"1", "2", "3"}
+
+
+def test_normalise_nr_bis_range():
+    result = normalise("§ 14 Nr. 2 bis 4 BGB")
+    nummern = set()
+    for r in result:
+        p = parse_reference(r)
+        for para in p.paragraphs:
+            for sr in para.sub_refs:
+                if sr.level == "Nr":
+                    nummern.add(sr.number)
+    assert nummern == {"2", "3", "4"}
+
+
+def test_normalise_abs_und_preserves_existing():
+    assert normalise("§ 433 Abs. 1 BGB") == ["§ 433 Abs. 1 BGB"]
+
+
+# f. / ff. expansion
+def test_normalise_f_dot():
+    assert normalise("§ 312 f. BGB") == ["§ 312 BGB", "§ 313 BGB"]
+
+
+def test_normalise_ff_no_dot():
+    assert normalise("§ 312 ff BGB") == ["§ 312 BGB", "§ 313 BGB", "§ 314 BGB"]
+
+
+def test_normalise_f_no_dot():
+    assert normalise("§ 312 f BGB") == ["§ 312 BGB", "§ 313 BGB"]
+
+
+def test_normalise_ff_non_numeric_paragraph_unchanged():
+    assert normalise("§ 312a ff. BGB") == ["§ 312a ff. BGB"]
+
+
+def test_parse_f_no_dot():
+    r = parse_reference("§ 312 f BGB")
+    assert r.paragraphs[0].paragraph == "312"
+    assert r.paragraphs[0].is_f is True
+    assert r.paragraphs[0].is_ff is False
+
+
+def test_parse_ff_no_dot():
+    r = parse_reference("§ 312 ff BGB")
+    assert r.paragraphs[0].paragraph == "312"
+    assert r.paragraphs[0].is_ff is True
+    assert r.paragraphs[0].is_f is False
+
+
+# Roman numeral Absatz shorthand
+# Roman expansion happens in _expand_abbreviations (called by normalise()),
+# so tests must go through normalise() first.
+def _srs_from_normalise(raw):
+    refs = normalise(raw) or [raw]
+    srs = []
+    for ref in refs:
+        p = parse_reference(ref)
+        for para in p.paragraphs:
+            srs.extend(para.sub_refs)
+    return srs
+
+
+def test_roman_absatz_simple():
+    srs = _srs_from_normalise("§ 7 I StVG")
+    assert any(s.level == "Abs" and s.number == "1" for s in srs)
+
+
+def test_roman_absatz_with_satz():
+    srs = _srs_from_normalise("§ 62 I 2 AufenthG")
+    assert any(s.level == "Abs" and s.number == "1" for s in srs)
+    assert any(s.level == "Satz" and s.number == "2" for s in srs)
+
+
+def test_roman_absatz_III():
+    srs = _srs_from_normalise("§ 404 III ZPO")
+    assert any(s.level == "Abs" and s.number == "3" for s in srs)
+
+
+def test_roman_absatz_does_not_touch_art_II():
+    # Art. II is a different construct - should not be expanded as Absatz
+    result = normalise("Art. II § 5 Abs. 1 IntPatÜG")
+    assert all("Abs. 2" not in r for r in result)
+
+
+# Sätz(e) / Absätze plural expansion
+def test_normalise_saetze_plural():
+    result = normalise("§ 168 Sätze 2 und 3 BGB")
+    saetze = set()
+    for ref in result:
+        p = parse_reference(ref)
+        for para in p.paragraphs:
+            for sr in para.sub_refs:
+                if sr.level == "Satz":
+                    saetze.add(sr.number)
+    assert saetze == {"2", "3"}
+
+
+def test_normalise_absaetze_plural():
+    result = normalise("§ 60 Absätze 5 und 7 AufenthaltsG")
+    absaetze = set()
+    for ref in result:
+        p = parse_reference(ref)
+        for para in p.paragraphs:
+            for sr in para.sub_refs:
+                if sr.level == "Abs":
+                    absaetze.add(sr.number)
+    assert absaetze == {"5", "7"}
+
+
+# Ziffer / Ziff. synonym for Nr. - go through normalise() since expansion is pre-parse
+def test_ziffer_synonym():
+    srs = _srs_from_normalise("§ 23 Abs. 2 Ziffer 2 SGB VIII")
+    assert any(s.level == "Nr" and s.number == "2" for s in srs)
+
+
+def test_ziff_abbreviated():
+    srs = _srs_from_normalise("§ 52 Abs. 1 Ziff. 1 GVG")
+    assert any(s.level == "Nr" and s.number == "1" for s in srs)
+
+
+# Nr. 2b - embedded Buchstabe split
+def test_nr_embedded_buchstabe():
+    r = parse_reference("§ 17 Nr. 2b TierSchG")
+    srs = r.paragraphs[0].sub_refs
+    assert any(s.level == "Nr" and s.number == "2" for s in srs)
+    assert any(s.level == "Buchst" and s.number == "b" for s in srs)
+
+
+# g leaking from SG law abbreviation fixed
+def test_sg_law_no_spurious_satz_g():
+    r = parse_reference("§ 18 Satz 1 SG")
+    srs = r.paragraphs[0].sub_refs
+    assert all(s.number != "g" and s.number != "G" for s in srs)
+    assert any(s.level == "Satz" and s.number == "1" for s in srs)
+    assert r.law == "SG"
+
+
+def test_sg_law_no_spurious_abs_g():
+    r = parse_reference("§ 46 Abs. 3 SG")
+    srs = r.paragraphs[0].sub_refs
+    assert all(s.number != "g" and s.number != "G" for s in srs)
+    assert any(s.level == "Abs" and s.number == "3" for s in srs)
+
+
+# Ab. shorthand - pre-parse expansion, needs normalise()
+def test_ab_shorthand_for_abs():
+    srs = _srs_from_normalise("§ 78 Ab. 2 GBO")
+    assert any(s.level == "Abs" and s.number == "2" for s in srs)
+
+
+# Satz eins - pre-parse expansion, needs normalise()
+def test_satz_eins():
+    srs = _srs_from_normalise("§ 87 Abs. 2 Satz eins SGB V")
+    assert any(s.level == "Satz" and s.number == "1" for s in srs)
+
+
+# Art. Na - letter suffix is part of the article number, not a Buchstabe
+def test_art_45a_gg_is_article_number():
+    r = parse_reference("Art. 45a GG")
+    assert r.is_art is True
+    assert r.paragraphs[0].paragraph == "45a"
+    assert r.paragraphs[0].sub_refs == []
+    assert r.law == "GG"

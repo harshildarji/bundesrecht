@@ -9,3 +9,6 @@ build/
 .vscode/
 .idea/
 *.zip
+
+# benchmark outputs
+benchmark/evals/

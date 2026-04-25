@@ -127,7 +127,7 @@ _LEVEL_RE = re.compile(
     r"\b(" + "|".join(p for p, _ in _LEVEL_PATTERNS) + r")\b\.?", re.IGNORECASE
 )
 
-_NUM_RE = re.compile(r"^(\d+[a-z]?|[a-z]|[IVXivx]+)$", re.IGNORECASE)
+_NUM_RE = re.compile(r"^(?:\d+[a-z]?|[a-z]|[ivxIVX]+)$")
 _RANGE_WORDS = {"bis", "to"}
 _RANGE_SUFFIX = re.compile(r"(?:ff\.|ff|f\.)\s*$")
 _IVM_RE = re.compile(r"\biVm\.?\b|i\.V\.m\.?", re.IGNORECASE)
@@ -186,8 +186,11 @@ def _parse_sub_refs(tokens: list[str], pos: int) -> tuple[list[SubReference], in
                 re.IGNORECASE,
             )
             if m2:
-                level = _canonical_level(m2.group(1))
                 number = m2.group(2)
+                # reject uppercase-only "numbers" - those are law abbreviation fragments
+                if number.isupper() and len(number) == 1:
+                    break
+                level = _canonical_level(m2.group(1))
                 sub_refs.append(SubReference(level=level, number=number))
                 pos += 1
                 continue
@@ -215,10 +218,19 @@ def _parse_sub_refs(tokens: list[str], pos: int) -> tuple[list[SubReference], in
                 range_end = tokens[pos].rstrip(".,")
                 pos += 1
 
+        # Nr. 2b fused: split into Nr. 2 + Buchst. b
+        fused_buchst = None
+        if level == "Nr":
+            fused = re.match(r"^(\d+)([a-z])$", number)
+            if fused:
+                number = fused.group(1)
+                fused_buchst = fused.group(2)
+
         if (
             pos < n
             and re.match(r"^[a-z]$", tokens[pos], re.IGNORECASE)
             and level == "Nr"
+            and not fused_buchst
         ):
             sub_refs.append(
                 SubReference(level=level, number=number, range_end=range_end)
@@ -228,10 +240,26 @@ def _parse_sub_refs(tokens: list[str], pos: int) -> tuple[list[SubReference], in
             continue
 
         sub_refs.append(SubReference(level=level, number=number, range_end=range_end))
+        if fused_buchst:
+            sub_refs.append(SubReference(level="Buchst", number=fused_buchst))
 
         if pos < n and tokens[pos] in (",", "und", "oder"):
             if pos + 1 < n and _LEVEL_RE.fullmatch(tokens[pos + 1]):
+                # next token is a new level keyword - continue outer loop
                 pos += 1
+                continue
+            elif pos + 1 < n and _NUM_RE.match(tokens[pos + 1].rstrip(".,")):
+                # same level repeated: Abs. 1 und 2 / Nr. 1, 2, 3
+                pos += 1
+                while pos < n and _NUM_RE.match(tokens[pos].rstrip(".,")):
+                    extra = tokens[pos].rstrip(".,")
+                    sub_refs.append(SubReference(level=level, number=extra))
+                    pos += 1
+                    if pos < n and tokens[pos] in (",", "und", "oder"):
+                        if pos + 1 < n and _NUM_RE.match(tokens[pos + 1].rstrip(".,")):
+                            pos += 1
+                            continue
+                    break
                 continue
             else:
                 break
@@ -282,12 +310,14 @@ def _parse_paragraph_block(
     paragraph = para_tok
     pos += 1
 
+    # absorb a letter suffix (e.g. 312a, 14b) but NOT f/ff which are
+    # legal continuation markers (f. = and following, ff. = and further following)
     if (
         pos < n
         and re.match(r"^[a-z]$", tokens[pos], re.IGNORECASE)
         and not re.match(r"^[A-ZÄÖÜ]", tokens[pos])
+        and tokens[pos].lower() not in ("f",)
     ):
-        tokens[pos + 1] if pos + 1 < n else ""
         paragraph = paragraph + tokens[pos].lower()
         pos += 1
 
@@ -399,16 +429,37 @@ def _parse_reference(ref_string: str) -> LawReference:
 
 
 # Data Access Layer
+def _expand_sub_ref_ranges(srs: list[SubReference]) -> list[SubReference]:
+    """Expand SubReferences with a numeric bis range into individual SubReferences.
+
+    e.g. Abs. 1 bis 3  -> [Abs. 1, Abs. 2, Abs. 3]
+         Nr. 2 bis 4   -> [Nr. 2, Nr. 3, Nr. 4]
+
+    Non-numeric or large ranges (>20) are left unchanged.
+    """
+    result = []
+    for sr in srs:
+        if sr.range_end and sr.number.isdigit() and sr.range_end.isdigit():
+            start, end = int(sr.number), int(sr.range_end)
+            if 0 < end - start <= 20:
+                for n in range(start, end + 1):
+                    result.append(SubReference(level=sr.level, number=str(n)))
+                continue
+        result.append(sr)
+    return result
+
+
 def _expand_multi_target(para_ref: ParagraphRef) -> list[ParagraphRef]:
     """Expand a ParagraphRef with repeated sub_ref levels into multiple ParagraphRefs,
     each representing one distinct normative target.
 
     Examples:
-        Abs.1, Nr.1, Nr.7, Abs.2  → [Abs.1+Nr.1, Abs.1+Nr.7, Abs.2]
-        Abs.1, Nr.1, Buchst.a, Buchst.b → [Abs.1+Nr.1+Buchst.a, Abs.1+Nr.1+Buchst.b]
-        Abs.1, Nr.1 → [Abs.1+Nr.1]  (no expansion needed)
+        Abs.1, Nr.1, Nr.7, Abs.2    -> [Abs.1+Nr.1, Abs.1+Nr.7, Abs.2]
+        Abs.1, Nr.1, Buchst.a, Buchst.b -> [Abs.1+Nr.1+Buchst.a, Abs.1+Nr.1+Buchst.b]
+        Abs. 1 bis 3                 -> [Abs.1, Abs.2, Abs.3]
+        Abs.1, Nr.1                  -> [Abs.1+Nr.1]  (no expansion needed)
     """
-    srs = para_ref.sub_refs
+    srs = _expand_sub_ref_ranges(para_ref.sub_refs)
     if not srs:
         return [para_ref]
 
