@@ -8,9 +8,8 @@ a dataset of 2,944 manually annotated German legal references.
 
 ```bash
 # from the parser/ root
-python benchmark/benchmark_bundesrecht.py                        # parser + normaliser only
-python benchmark/benchmark_bundesrecht.py --jsonl gesetze.jsonl  # + resolver
-python benchmark/benchmark_bundesrecht.py --print-report         # also echo report to terminal
+python benchmark/benchmark_bundesrecht.py
+python benchmark/benchmark_bundesrecht.py --print-report
 ```
 
 Output is written to `benchmark/evals/`:

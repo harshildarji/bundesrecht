@@ -6,7 +6,6 @@ Downloads the annotation dataset from HuggingFace at runtime.
 
 Usage:
     python benchmark/benchmark_bundesrecht.py
-    python benchmark/benchmark_bundesrecht.py --jsonl gesetze.jsonl
     python benchmark/benchmark_bundesrecht.py --print-report
 """
 
@@ -63,13 +62,6 @@ def _gold_set(row: dict, *keys: str) -> set[str]:
     if not raw:
         return set()
     return {v.strip().lower() for v in raw.split(",") if v.strip()}
-
-
-_PREFIX_RE = re.compile(r"^\s*\(\d+\)\s*")
-
-
-def _strip_absatz_prefix(text: str) -> str:
-    return _PREFIX_RE.sub("", text).strip()
 
 
 _SUBREF_KW = {
@@ -267,120 +259,6 @@ def _print_failure_analysis(micro: dict[str, MicroResult]) -> None:
                 print(f"        e.g. {ex!r}")
 
 
-# Resolver benchmark
-@dataclass
-class ResolverResult:
-    total: int = 0
-    correct: int = 0
-    not_in_dataset: int = 0
-    failed_resolve: int = 0
-    failures: list = field(default_factory=list)
-
-    @property
-    def precision(self) -> float:
-        denom = self.total - self.not_in_dataset
-        return self.correct / denom if denom else 0.0
-
-    def __str__(self) -> str:
-        denom = self.total - self.not_in_dataset
-        return (
-            f"{self.correct}/{denom} correct ({self.precision:.1%})"
-            f"  [{self.not_in_dataset} not in dataset,"
-            f" {self.failed_resolve} resolve failures,"
-            f" {len(self.failures)} wrong]"
-        )
-
-
-def run_resolver_benchmark(
-    rows: list[dict], jsonl_path: str
-) -> dict[str, ResolverResult]:
-    from bundesrecht import Bundesrecht
-
-    lib = Bundesrecht(jsonl_path)
-
-    fields = ["full_text", "absatz_text"]
-    results: dict[str, ResolverResult] = {f: ResolverResult() for f in fields}
-
-    for row in rows:
-        raw = _gold(row, "Referenz")
-        if not raw:
-            for f in fields:
-                results[f].total += 1
-                results[f].not_in_dataset += 1
-            continue
-
-        try:
-            resolved = lib.query(raw)
-        except Exception:
-            for f in fields:
-                results[f].total += 1
-                results[f].failed_resolve += 1
-            continue
-
-        if not resolved:
-            for f in fields:
-                results[f].total += 1
-                results[f].failed_resolve += 1
-            continue
-
-        r0 = resolved[0]
-        depth = getattr(r0, "resolved_depth", "section")
-
-        res_ft = results["full_text"]
-        res_ft.total += 1
-        gold_ft = _gold(row, "full_text")
-        if not gold_ft:
-            res_ft.not_in_dataset += 1
-        else:
-            try:
-                extracted_ft = _norm(r0.full_text())
-            except Exception:
-                extracted_ft = ""
-            norm_gold = (
-                _strip_absatz_prefix(gold_ft) if depth != "section" else _norm(gold_ft)
-            )
-            if extracted_ft == norm_gold:
-                res_ft.correct += 1
-            else:
-                res_ft.failures.append(
-                    {"Referenz": raw, "depth": depth, "pattern": _ref_pattern(raw)}
-                )
-
-        res_at = results["absatz_text"]
-        res_at.total += 1
-        gold_at = _gold(row, "absatz_text")
-        if not gold_at:
-            res_at.not_in_dataset += 1
-        else:
-            if depth not in ("absatz", "satz", "nummer", "buchstabe"):
-                res_at.failed_resolve += 1
-            else:
-                try:
-                    extracted_at = _norm(r0.full_text())
-                except Exception:
-                    extracted_at = ""
-                if extracted_at == _strip_absatz_prefix(gold_at):
-                    res_at.correct += 1
-                else:
-                    res_at.failures.append(
-                        {"Referenz": raw, "depth": depth, "pattern": _ref_pattern(raw)}
-                    )
-
-    return results
-
-
-def _print_resolver_analysis(results: dict[str, ResolverResult]) -> None:
-    for f, r in results.items():
-        if not r.failures:
-            continue
-        by_depth: Counter = Counter(x["depth"] for x in r.failures)
-        by_pattern: Counter = Counter(x["pattern"] for x in r.failures)
-        print(f"\n  [{f}] {len(r.failures)} wrong:")
-        print(f"    by depth: {dict(by_depth.most_common())}")
-        for pat, count in by_pattern.most_common(10):
-            print(f"    {count:4d}x  {pat}")
-
-
 # Serialisation
 def _to_serialisable_parser(
     strict: dict[str, StrictResult],
@@ -406,26 +284,11 @@ def _to_serialisable_parser(
     return out
 
 
-def _to_serialisable_resolver(results: dict[str, ResolverResult]) -> dict:
-    return {
-        k: {
-            "total": v.total,
-            "correct": v.correct,
-            "not_in_dataset": v.not_in_dataset,
-            "failed_resolve": v.failed_resolve,
-            "precision": round(v.precision, 4),
-            "n_failures": len(v.failures),
-        }
-        for k, v in results.items()
-    }
-
-
 # Report building
 def _build_report(
     rows: list[dict],
     strict: dict[str, StrictResult],
     micro: dict[str, MicroResult],
-    resolver_results: dict | None = None,
 ) -> str:
     buf = io.StringIO()
 
@@ -464,11 +327,6 @@ def _build_report(
 
     with contextlib.redirect_stdout(buf):
         _print_failure_analysis(micro)
-        if resolver_results:
-            print(f"\n{sep}\n  Resolver Benchmark  (lib.query)\n{sep}")
-            for f, r in resolver_results.items():
-                print(f"  {f:<15} {r}")
-            _print_resolver_analysis(resolver_results)
 
     return buf.getvalue()
 
@@ -558,11 +416,6 @@ def main() -> None:
         description="Benchmark bundesrecht parser+normaliser against PaDaS-Lab/legal-reference-annotations"
     )
     parser.add_argument(
-        "--jsonl",
-        default=None,
-        help="Path to gesetze.jsonl - if provided, also runs the resolver benchmark",
-    )
-    parser.add_argument(
         "--print-report",
         dest="print_output",
         action="store_true",
@@ -576,18 +429,12 @@ def main() -> None:
     rows = _load_dataset()
     strict, micro = run_parser_benchmark(rows)
 
-    resolver_results = None
-    if args.jsonl:
-        resolver_results = run_resolver_benchmark(rows, args.jsonl)
-
     output: dict = {
         "n_rows": len(rows),
         "parser": _to_serialisable_parser(strict, micro),
     }
-    if resolver_results:
-        output["resolver"] = _to_serialisable_resolver(resolver_results)
 
-    report = _build_report(rows, strict, micro, resolver_results)
+    report = _build_report(rows, strict, micro)
     wrong_rows = _build_wrong_rows(micro)
 
     _write_evals(
