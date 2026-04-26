@@ -402,6 +402,9 @@ def _expand_abbreviations(raw: str) -> str:
     raw = re.sub(r"\bZiff(?:er)?\.?\s*(?=\d)", "Nr. ", raw, flags=re.IGNORECASE)
     # S. N → Satz N
     raw = re.sub(r"(?<![A-Z])S[.]\s*(?=\d)", "Satz ", raw)
+    # lit. / lit → Buchst. (latin abbreviation for littera, used in older laws)
+    raw = re.sub(r"\blit\.\s*(?=[a-z])", "Buchst. ", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"\blit\s+(?=[a-z])", "Buchst. ", raw, flags=re.IGNORECASE)
     # "Satz eins" → "Satz 1"
     raw = re.sub(r"\bSatz\s+eins\b", "Satz 1", raw, flags=re.IGNORECASE)
     # Roman numeral Absatz shorthand: § N {I|II|III|IV|V} N LAW

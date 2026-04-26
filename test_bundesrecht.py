@@ -637,6 +637,17 @@ def test_ziff_abbreviated():
     assert any(s.level == "Nr" and s.number == "1" for s in srs)
 
 
+# lit. / lit → Buchst. expansion
+def test_lit_dot_expands_to_buchst():
+    srs = _srs_from_normalise("§ 1 Abs. 1 Nr. 1 lit. a UmwRG")
+    assert any(s.level == "Buchst" and s.number == "a" for s in srs)
+
+
+def test_lit_no_dot_expands_to_buchst():
+    srs = _srs_from_normalise("§ 1 Abs. 1 Nr. 2 lit a PBZugV")
+    assert any(s.level == "Buchst" and s.number == "a" for s in srs)
+
+
 # Nr. 2b - embedded Buchstabe split
 def test_nr_embedded_buchstabe():
     r = parse_reference("§ 17 Nr. 2b TierSchG")

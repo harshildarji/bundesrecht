@@ -593,6 +593,25 @@ class LawLibrary:
                         f"resolved to Abs. {abs_num}"
                     )
 
+            # fallback: Buchst. requested without Nr. - some laws use letter-prefixed
+            # nummer items (a), b)) instead of proper buchstaben inside a nummer.
+            # scan nummer items for matching letter prefix.
+            if (
+                absatz_data
+                and nr_num is None
+                and buchst_num is not None
+                and resolved_depth != "buchstabe"
+            ):
+                label = f"{buchst_num})"
+                for nr in absatz_data.get("nummer", []):
+                    text = nr.get("text", "") if isinstance(nr, dict) else str(nr)
+                    if text.lstrip().startswith(label) or text.lstrip().startswith(
+                        f"{buchst_num} )"
+                    ):
+                        nummer_text = text
+                        resolved_depth = "buchstabe"
+                        break
+
         return QueryResult(
             reference=ref,
             law_data=law_data,
