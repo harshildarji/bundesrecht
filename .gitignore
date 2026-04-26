@@ -9,6 +9,11 @@ build/
 .vscode/
 .idea/
 *.zip
+token
 
 # benchmark outputs
 benchmark/evals/
+
+# examples
+examples/gesetze.jsonl
+.cache/

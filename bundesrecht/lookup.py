@@ -453,8 +453,8 @@ class LawLibrary:
 
     @property
     def available_laws(self) -> list[str]:
-        """Sorted list of law abbreviations loaded."""
-        return sorted(self._laws.keys())
+        """Sorted list of law abbreviations loaded (excludes internal gesetze_id keys)."""
+        return sorted(k for k in self._laws if "::" not in k)
 
     def get_law(self, abbreviation: str) -> Optional[LawData]:
         """Retrieve a LawData object by abbreviation (case-insensitive)."""
