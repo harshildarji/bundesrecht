@@ -49,28 +49,38 @@ class Bundesrecht:
         >>> results = lib.query_canonical("§ 2 Abs. 1 Nr. 1 UrhG")
         >>> lib.normalise("§ 312 iVm § 355 BGB")
         ['§ 312 BGB', '§ 355 BGB']
+        >>> lib.normalise("§ 312 ff. BGB", ff_expansion=3)
+        ['§ 312 BGB', '§ 313 BGB', '§ 314 BGB']
     """
 
     def __init__(self, jsonl_path: Union[str, Path]):
         self._library = LawLibrary(str(jsonl_path))
 
     # normalisation (no lookup)
-    def normalise(self, raw: str) -> list[str]:
-        """Normalise a raw citation string → list of canonical strings."""
-        return normalise(raw)
+    def normalise(self, raw: str, ff_expansion: int | None = None) -> list[str]:
+        """Normalise a raw citation string → list of canonical strings.
+
+        Args:
+            raw: Any German legal citation string.
+            ff_expansion: Number of paragraphs to expand ff. into. If None (default),
+                ff. is preserved as-is. f. always expands to exactly 2.
+        """
+        return normalise(raw, ff_expansion=ff_expansion)
 
     # resolution
-    def query(self, raw: str) -> list[QueryResult]:
+    def query(self, raw: str, ff_expansion: int | None = None) -> list[QueryResult]:
         """Normalise then resolve a raw citation string.
 
         Args:
             raw: Any German legal citation, e.g. '§ 2 Abs. 1 Nr. 1, Nr. 7, Abs. 2 UrhG'
+            ff_expansion: Number of paragraphs to expand ff. into. If None (default),
+                ff. is preserved as-is. f. always expands to exactly 2.
 
         Returns:
             One QueryResult per resolved canonical reference, preserving
             the order of the normalised canonical strings.
         """
-        canonical_refs = normalise(raw)
+        canonical_refs = normalise(raw, ff_expansion=ff_expansion)
         results: list[QueryResult] = []
         for canon in canonical_refs:
             results.extend(self._library.query(canon))

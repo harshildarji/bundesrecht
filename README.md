@@ -144,12 +144,19 @@ normalise('§ 1 i. V. m. § 2 BGB')
 normalise('§ 1 S. 2 BGB')
 # → ['§ 1 Satz 2 BGB']
 
-# f. and ff. expand into individual paragraph refs
+# f. always expands to exactly 2 paragraphs
 normalise('§ 312 f. BGB')
 # → ['§ 312 BGB', '§ 313 BGB']
 
+# ff. is preserved by default - pass ff_expansion to expand
 normalise('§ 312 ff. BGB')
+# → ['§ 312 ff. BGB']
+
+normalise('§ 312 ff. BGB', ff_expansion=3)
 # → ['§ 312 BGB', '§ 313 BGB', '§ 314 BGB']
+
+normalise('§ 312 ff. BGB', ff_expansion=5)
+# → ['§ 312 BGB', '§ 313 BGB', '§ 314 BGB', '§ 315 BGB', '§ 316 BGB']
 ```
 
 
@@ -166,7 +173,8 @@ normalise('§ 312 ff. BGB')
 | `§ 2 Abs. 1 Nr. 1, Nr. 7, Abs. 2` | three separate canonical refs               |
 | `§ 1 S. 2 BGB`                     | `['§ 1 Satz 2 BGB']`                       |
 | `§ 312 f. BGB`                     | `['§ 312 BGB', '§ 313 BGB']`               |
-| `§ 312 ff. BGB`                    | `['§ 312 BGB', '§ 313 BGB', '§ 314 BGB']` |
+| `§ 312 ff. BGB`                    | `['§ 312 ff. BGB']` (preserved by default) |
+| `§ 312 ff. BGB` (ff_expansion=3)   | `['§ 312 BGB', '§ 313 BGB', '§ 314 BGB']` |
 | `§312 BGB` (no space)              | `['§ 312 BGB']`                            |
 
 Ranges with letter suffixes (`§§ 12a-12c`) are left unchanged because

@@ -53,7 +53,11 @@ def test_normalise_satz_shorthand():
 
 
 def test_normalise_ff():
-    assert normalise("§ 312 ff. BGB") == ["§ 312 BGB", "§ 313 BGB", "§ 314 BGB"]
+    assert normalise("§ 312 ff. BGB", ff_expansion=3) == [
+        "§ 312 BGB",
+        "§ 313 BGB",
+        "§ 314 BGB",
+    ]
 
 
 def test_normalise_no_space_between_paragraph_sign_and_number():
@@ -512,7 +516,11 @@ def test_normalise_f_dot():
 
 
 def test_normalise_ff_no_dot():
-    assert normalise("§ 312 ff BGB") == ["§ 312 BGB", "§ 313 BGB", "§ 314 BGB"]
+    assert normalise("§ 312 ff BGB", ff_expansion=3) == [
+        "§ 312 BGB",
+        "§ 313 BGB",
+        "§ 314 BGB",
+    ]
 
 
 def test_normalise_f_no_dot():
@@ -521,6 +529,27 @@ def test_normalise_f_no_dot():
 
 def test_normalise_ff_non_numeric_paragraph_unchanged():
     assert normalise("§ 312a ff. BGB") == ["§ 312a ff. BGB"]
+
+
+def test_normalise_ff_none_default_preserves():
+    # default: ff. is not expanded, preserved as-is
+    assert normalise("§ 312 ff. BGB") == ["§ 312 ff. BGB"]
+
+
+def test_normalise_ff_custom_expansion():
+    assert normalise("§ 312 ff. BGB", ff_expansion=5) == [
+        "§ 312 BGB",
+        "§ 313 BGB",
+        "§ 314 BGB",
+        "§ 315 BGB",
+        "§ 316 BGB",
+    ]
+
+
+def test_normalise_f_dot_unaffected_by_ff_expansion():
+    # f. always expands to exactly 2 regardless of ff_expansion
+    assert normalise("§ 312 f. BGB", ff_expansion=5) == ["§ 312 BGB", "§ 313 BGB"]
+    assert normalise("§ 312 f. BGB") == ["§ 312 BGB", "§ 313 BGB"]
 
 
 def test_parse_f_no_dot():

@@ -1,7 +1,7 @@
 # Benchmark Results
 
 **Dataset:** PaDaS-Lab/legal-reference-annotations (2944 references)  
-**Date:** 2026-04-25  
+**Date:** 2026-04-26  
 
 ## MODE 1: Strict Exact Match
 
@@ -9,7 +9,7 @@ Row-level: extracted set must equal gold set exactly.
 
 | Field | Correct / Total | Match Rate | n_gold | n_extracted |
 |-------|----------------|------------|--------|-------------|
-| Artikel | 2883/2944 | 97.9% | 2944 | 3037 |
+| Artikel | 2929/2944 | 99.5% | 2944 | 2943 |
 | Absatz | 2925/2944 | 99.4% | 2141 | 2142 |
 | Satz | 2904/2944 | 98.6% | 861 | 882 |
 | Nummer | 2920/2944 | 99.2% | 465 | 473 |
@@ -21,7 +21,7 @@ Element-level: TP/FP/FN accumulated across individual values (empty-empty rows e
 
 | Field | Precision | Recall | F1 | TP | FP | FN | n_gold | n_extracted |
 |-------|-----------|--------|----|----|----|----|--------|-------------|
-| Artikel | 96.5% | 99.6% | 98.0% | 2931 | 106 | 13 | 2944 | 3037 |
+| Artikel | 99.6% | 99.6% | 99.6% | 2931 | 12 | 13 | 2944 | 2943 |
 | Absatz | 99.3% | 99.3% | 99.3% | 2127 | 15 | 14 | 2141 | 2142 |
 | Satz | 96.1% | 98.5% | 97.3% | 848 | 34 | 13 | 861 | 882 |
 | Nummer | 95.8% | 97.4% | 96.6% | 453 | 20 | 12 | 465 | 473 |

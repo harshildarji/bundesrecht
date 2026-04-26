@@ -247,19 +247,27 @@ def _expand_range(raw: str) -> list[str]:
     return [f"§ {n} {suffix}".strip() for n in range(start, end + 1)]
 
 
-def _expand_f_ff(para: ParagraphRef, law: str, is_art: bool) -> list[LawReference]:
+def _expand_f_ff(
+    para: ParagraphRef,
+    law: str,
+    is_art: bool,
+    ff_expansion: int | None,
+) -> list[LawReference]:
     """Expand f. and ff. continuation markers into individual paragraph refs.
 
     Legal meaning:
-        f.  (und folgende) = that paragraph and the next one  -> exactly 2 paragraphs
-        ff. (und fortfolgende) = that paragraph and the following ones -> conventionally 3
+        f.  (und folgende) = that paragraph and the next one -> always exactly 2 paragraphs
+        ff. (und fortfolgende) = that paragraph and the following ones -> count set by ff_expansion
 
     Only applies to pure numeric paragraph numbers.
+    If ff_expansion is None, ff. is not expanded (left as-is).
     """
     if not (para.is_f or para.is_ff) or not para.paragraph.isdigit():
         return []
+    if para.is_ff and ff_expansion is None:
+        return []
     base = int(para.paragraph)
-    count = 2 if para.is_f else 3
+    count = 2 if para.is_f else ff_expansion
     refs = []
     for n in range(base, base + count):
         expanded_para = ParagraphRef(
@@ -273,7 +281,7 @@ def _expand_f_ff(para: ParagraphRef, law: str, is_art: bool) -> list[LawReferenc
     return refs
 
 
-def _parse_and_expand(raw: str) -> list[LawReference]:
+def _parse_and_expand(raw: str, ff_expansion: int | None = None) -> list[LawReference]:
     """Parse a raw string and expand any multi-target ParagraphRefs."""
     ref = _parse_reference(raw)
     if not ref.paragraphs:
@@ -282,7 +290,7 @@ def _parse_and_expand(raw: str) -> list[LawReference]:
     expanded_paragraphs: list[ParagraphRef] = []
     for para in ref.paragraphs:
         # expand f./ff. into individual paragraph refs
-        ff_expanded = _expand_f_ff(para, ref.law or "", ref.is_art)
+        ff_expanded = _expand_f_ff(para, ref.law or "", ref.is_art, ff_expansion)
         if ff_expanded:
             return ff_expanded
         expanded_paragraphs.extend(_expand_multi_target(para))
@@ -438,12 +446,15 @@ def _expand_abbreviations(raw: str) -> str:
 
 
 # Public API
-def normalise(raw: str) -> list[str]:
+def normalise(raw: str, ff_expansion: int | None = None) -> list[str]:
     """Normalise a raw German legal reference string into canonical refs.
 
     Args:
         raw: Any German legal citation string, e.g.
             '§ 2 Abs. 1 Nr. 1, Nr. 7, Abs. 2 UrhG'
+        ff_expansion: Number of paragraphs to expand ff. into. If None (default),
+            ff. is preserved as-is. f. always expands to exactly 2 regardless of
+            this argument.
 
     Returns:
         Deduplicated list of canonical reference strings, each independently
@@ -456,6 +467,8 @@ def normalise(raw: str) -> list[str]:
         ['§ 12 BGB', '§ 13 BGB', '§ 14 BGB', '§ 15 BGB']
         >>> normalise('§ 2 Abs. 1 Nr. 1, Nr. 7, Abs. 2 UrhG')
         ['§ 2 Abs. 1 Nr. 1 UrhG', '§ 2 Abs. 1 Nr. 7 UrhG', '§ 2 Abs. 2 UrhG']
+        >>> normalise('§ 312 ff. BGB', ff_expansion=3)
+        ['§ 312 BGB', '§ 313 BGB', '§ 314 BGB']
     """
     raw = raw.strip()
     raw = _expand_abbreviations(raw)
@@ -470,7 +483,7 @@ def normalise(raw: str) -> list[str]:
         for ml_part in multi_law_parts:
             range_expanded.extend(_expand_range(ml_part))
         for item in range_expanded:
-            refs = _parse_and_expand(item)
+            refs = _parse_and_expand(item, ff_expansion=ff_expansion)
             for ref in refs:
                 canon = _reconstruct(ref)
                 if canon and canon not in canonical:
