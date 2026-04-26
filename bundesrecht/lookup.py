@@ -77,7 +77,7 @@ class LawData:
             return None
         content = section.get("content", [])
         absatz_str = str(absatz)
-        for field_name in ("absatz", "satz"):
+        for field_name in ("absatz",):
             for c in content:
                 text = c.get(field_name, "")
                 if text and re.match(rf"^\({re.escape(absatz_str)}\)", text):
@@ -110,7 +110,7 @@ class LawData:
         if not abs_data:
             return None
 
-        text = abs_data.get("absatz", "") or abs_data.get("satz", "")
+        text = abs_data.get("absatz", "")
         text = re.sub(r"^\(\d+\w*\)\s*", "", text)
         sentences = _split_sentences(text)
         if 1 <= satz <= len(sentences):
@@ -280,10 +280,10 @@ def _strip_leaf_prefix(text: str, depth: str) -> str:
 def _assemble_absatz(c: dict) -> str:
     """Assemble the full text of a content item.
 
-    Combines lead-in text (absatz or satz), all Nummern, and Listenende.
+    Combines lead-in text (absatz), all Nummern, and Listenende.
     """
     parts = []
-    lead = c.get("absatz", "") or c.get("satz", "")
+    lead = c.get("absatz", "")
     if lead:
         parts.append(lead)
     for nr in c.get("nummer", []):
@@ -358,9 +358,7 @@ class QueryResult:
         parts = []
 
         if self.absatz_data is not None and self.nummer_text is not None:
-            lead = self.absatz_data.get("absatz", "") or self.absatz_data.get(
-                "satz", ""
-            )
+            lead = self.absatz_data.get("absatz", "")
             if lead:
                 parts.append(_strip_leaf_prefix(lead.rstrip(":").strip(), "absatz"))
 

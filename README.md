@@ -361,7 +361,7 @@ Raw dict of the resolved section, or `None` if not found.
 
 ```python
 r.section.get('titel')    # same as r.titel()
-r.section.get('content')  # list of Absatz dicts
+r.section.get('content')  # list of content blocks
 ```
 
 ### r.resolved_para
