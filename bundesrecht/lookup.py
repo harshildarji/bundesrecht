@@ -117,6 +117,22 @@ class LawData:
             return sentences[satz - 1]
         return None
 
+    @staticmethod
+    def _match_nummer(nummern: list, nummer: int) -> Optional[dict]:
+        """Match a Nummer item by its text prefix (e.g. "2." or "1a.") rather than
+        positional index. Falls back to positional if no prefix match is found.
+        Handles non-sequential lists like 1, 1a, 2, 3 correctly.
+        """
+        target = str(nummer)
+        for nr in nummern:
+            text = nr.get("text", "") if isinstance(nr, dict) else str(nr)
+            m = re.match(r"^(\d+[a-z]?)\.", text.lstrip())
+            if m and m.group(1) == target:
+                return nr
+        if 1 <= nummer <= len(nummern):
+            return nummern[nummer - 1]
+        return None
+
     def get_nummer(
         self, paragraph: str, absatz: Optional[Union[int, str]], nummer: int
     ) -> Optional[dict]:
@@ -142,9 +158,7 @@ class LawData:
             return None
 
         nummern = abs_data.get("nummer", [])
-        if 1 <= nummer <= len(nummern):
-            return nummern[nummer - 1]
-        return None
+        return self._match_nummer(nummern, nummer)
 
     def get_buchstabe(
         self,
@@ -546,11 +560,22 @@ class LawLibrary:
                         f"{pref} {para_ref.paragraph} - resolved to {pref} {para_ref.paragraph}"
                     )
             elif section.get("content"):
-                absatz_data = (
-                    section["content"][0] if len(section["content"]) == 1 else None
-                )
-                if absatz_data:
+                if len(section["content"]) == 1:
+                    absatz_data = section["content"][0]
                     resolved_depth = "absatz"
+                elif nr_num is not None or buchst_num is not None:
+                    # multiple absätze and a sub-ref requested without explicit Abs. -
+                    # ambiguous, cannot determine which Absatz is meant
+                    pref = "Art." if ref.is_art else "§"
+                    sub = (
+                        f"Nr. {nr_num}"
+                        if nr_num is not None
+                        else f"Buchst. {buchst_num}"
+                    )
+                    resolution_note = (
+                        f"{sub} requested in {pref} {para_ref.paragraph} without explicit Absatz - "
+                        f"resolved to {pref} {para_ref.paragraph}"
+                    )
 
             if absatz_data and satz_num is not None:
                 try:
@@ -587,30 +612,51 @@ class LawLibrary:
                             )
                 else:
                     pref = "Art." if ref.is_art else "§"
-                    resolution_note = (
-                        f"Nr. {nr_num} not found in "
-                        f"{pref} {para_ref.paragraph} Abs. {abs_num} - "
-                        f"resolved to Abs. {abs_num}"
-                    )
+                    if abs_num is not None:
+                        resolution_note = (
+                            f"Nr. {nr_num} not found in "
+                            f"{pref} {para_ref.paragraph} Abs. {abs_num} - "
+                            f"resolved to Abs. {abs_num}"
+                        )
+                    else:
+                        resolution_note = (
+                            f"Nr. {nr_num} not found in "
+                            f"{pref} {para_ref.paragraph} - "
+                            f"resolved to {pref} {para_ref.paragraph}"
+                        )
 
             # fallback: Buchst. requested without Nr. - some laws use letter-prefixed
             # nummer items (a), b)) instead of proper buchstaben inside a nummer.
             # scan nummer items for matching letter prefix.
             if (
-                absatz_data
-                and nr_num is None
+                nr_num is None
                 and buchst_num is not None
                 and resolved_depth != "buchstabe"
             ):
-                label = f"{buchst_num})"
-                for nr in absatz_data.get("nummer", []):
-                    text = nr.get("text", "") if isinstance(nr, dict) else str(nr)
-                    if text.lstrip().startswith(label) or text.lstrip().startswith(
-                        f"{buchst_num} )"
-                    ):
-                        nummer_text = text
-                        resolved_depth = "buchstabe"
-                        break
+                found_buchst = False
+                if absatz_data:
+                    label = f"{buchst_num})"
+                    for nr in absatz_data.get("nummer", []):
+                        text = nr.get("text", "") if isinstance(nr, dict) else str(nr)
+                        if text.lstrip().startswith(label) or text.lstrip().startswith(
+                            f"{buchst_num} )"
+                        ):
+                            nummer_text = text
+                            resolved_depth = "buchstabe"
+                            found_buchst = True
+                            break
+                if not found_buchst:
+                    pref = "Art." if ref.is_art else "§"
+                    depth_str = (
+                        f"Abs. {abs_num}"
+                        if abs_num is not None
+                        else f"{pref} {para_ref.paragraph}"
+                    )
+                    resolution_note = (
+                        f"Buchst. {buchst_num} not found in "
+                        f"{pref} {para_ref.paragraph} - "
+                        f"resolved to {depth_str}"
+                    )
 
         return QueryResult(
             reference=ref,

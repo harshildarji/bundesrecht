@@ -262,6 +262,93 @@ def test_query_buchstabe_bgb_81_abs1_nr1_buchst_a(lib):
     assert "Zweck der Stiftung" in r[0].full_text()
 
 
+# _match_nummer - text prefix matching
+def test_query_nummer_skips_letter_suffix_items(lib):
+    # § 1 HWG has items 1, 1a, 2, 3 - Nr. 2 should return item "2." not "1a."
+    r = lib.query("§ 1 Abs. 1 Nr. 2 HWG")
+    assert r[0].resolved_depth == "nummer"
+    assert "andere Mittel" in r[0].full_text()
+
+
+def test_query_nummer_without_abs_single_content(lib):
+    # § 309 BGB has one content block - Nr. 2 without Abs. should resolve
+    r = lib.query("§ 309 Nr. 2 BGB")
+    assert r[0].resolved_depth == "nummer"
+    assert "Leistungsverweigerungsrechte" in r[0].full_text()
+
+
+def test_query_nummer_without_abs_multi_content_gets_note(lib):
+    # § 11 HWG has two content blocks - Nr. 2 without explicit Abs. is ambiguous
+    r = lib.query("§ 11 Nr. 2 HWG")
+    assert r[0].resolved_depth == "section"
+    assert r[0].resolution_note != ""
+    assert "Nr. 2" in r[0].resolution_note
+
+
+def test_query_buchst_not_found_gets_note(lib):
+    # § 5 HWG has no Buchstabe structure - falls back to absatz with a note
+    r = lib.query("§ 5 Buchst. c HWG")
+    assert r[0].resolved_depth in ("section", "absatz")
+    assert "Buchst. c" in r[0].resolution_note
+
+
+def test_query_nummer_sibling_buchstaben(lib):
+    # § 309 Nr. 2 BGB has a) and b) as sibling DL - buchstaben must appear in full_text
+    r = lib.query("§ 309 Nr. 2 BGB")
+    text = r[0].full_text()
+    assert "Leistungsverweigerungsrecht" in text  # from buchstabe a)
+    assert "Zurückbehaltungsrecht" in text  # from buchstabe b)
+
+
+def test_query_buchstabe_bgb_309_nr2_buchst_a(lib):
+    # § 309 Abs. 1 Nr. 2 Buchst. a BGB - explicit buchstabe resolution
+    r = lib.query("§ 309 Nr. 2 Buchst. a BGB")
+    assert r[0].resolved_depth == "buchstabe"
+    assert "Leistungsverweigerungsrecht" in r[0].full_text()
+
+
+def test_query_buchstabe_bgb_309_nr2_buchst_b(lib):
+    r = lib.query("§ 309 Nr. 2 Buchst. b BGB")
+    assert r[0].resolved_depth == "buchstabe"
+    assert "Zurückbehaltungsrecht" in r[0].full_text()
+
+
+def test_query_buchstabe_bgb_81_abs1_nr1_all_buchst(lib):
+    # § 81 Abs. 1 Nr. 1 has 4 buchstaben a-d
+    for letter, expected in [
+        ("a", "Zweck"),
+        ("b", "Namen"),
+        ("c", "Sitz"),
+        ("d", "Vorstand"),
+    ]:
+        r = lib.query(f"§ 81 Abs. 1 Nr. 1 Buchst. {letter} BGB")
+        assert r[0].resolved_depth == "buchstabe", f"Buchst. {letter} not resolved"
+        assert (
+            expected in r[0].full_text()
+        ), f"Expected {expected!r} in Buchst. {letter}"
+
+
+def test_query_buchstabe_bgb_438_abs1_nr1_buchst_a(lib):
+    # § 438 Abs. 1 Nr. 1 Buchst. a BGB
+    r = lib.query("§ 438 Abs. 1 Nr. 1 Buchst. a BGB")
+    assert r[0].resolved_depth == "buchstabe"
+    assert "dinglichen Recht" in r[0].full_text()
+
+
+def test_query_nummer_bgb_309_nr1_no_buchst(lib):
+    # § 309 Nr. 1 has no buchstaben - should resolve to nummer
+    r = lib.query("§ 309 Nr. 1 BGB")
+    assert r[0].resolved_depth == "nummer"
+    assert "Kurzfristige" in r[0].full_text()
+
+
+def test_query_buchstabe_bgb_309_nr8_buchst_a(lib):
+    # § 309 Nr. 8 Buchst. a - unterbuchstaben exist inside b but not a
+    r = lib.query("§ 309 Nr. 8 Buchst. a BGB")
+    assert r[0].resolved_depth == "buchstabe"
+    assert "Ausschluss des Rechts" in r[0].full_text()
+
+
 # query - resolution failures
 def test_query_paragraph_not_found(lib):
     r = lib.query("§ 999999 BGB")
