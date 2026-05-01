@@ -430,7 +430,8 @@ abs1 = bgb.get_absatz('433', '1')   # string also works
 | `'section'`      | Only the paragraph was found (no sub-ref match)  |
 | `'absatz'`       | Absatz resolved; Nummer was not requested/found  |
 | `'nummer'`       | Nummer resolved; Buchstabe not requested/found   |
-| `'buchstabe'`    | Fully resolved to Buchstabe level                |
+| `'buchstabe'`    | Buchstabe resolved; Unterbuchstabe not requested/found |
+| `'unterbuchstabe'` | Fully resolved to Unterbuchstabe level (`aa)`, `bb)`) |
 
 
 ## Complete example
