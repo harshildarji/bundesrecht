@@ -127,7 +127,7 @@ _LEVEL_RE = re.compile(
     r"\b(" + "|".join(p for p, _ in _LEVEL_PATTERNS) + r")\b\.?", re.IGNORECASE
 )
 
-_NUM_RE = re.compile(r"^(?:\d+[a-z]?|[a-z]|[ivxIVX]+)$")
+_NUM_RE = re.compile(r"^(?:\d+[a-z]?|[a-z]{1,2}|[ivxIVX]+)$")
 _RANGE_WORDS = {"bis", "to"}
 _RANGE_SUFFIX = re.compile(r"(?:ff\.|ff|f\.)\s*$")
 _IVM_RE = re.compile(r"\biVm\.?\b|i\.V\.m\.?", re.IGNORECASE)
@@ -242,6 +242,13 @@ def _parse_sub_refs(tokens: list[str], pos: int) -> tuple[list[SubReference], in
         sub_refs.append(SubReference(level=level, number=number, range_end=range_end))
         if fused_buchst:
             sub_refs.append(SubReference(level="Buchst", number=fused_buchst))
+
+        # bare double-letter after Buchst = unterbuchstabe (aa, bb, cc...)
+        if level == "Buchst" and pos < n:
+            nxt = tokens[pos].rstrip(".,")
+            if re.match(r"^[a-z]{2}$", nxt):
+                sub_refs.append(SubReference(level="Buchst", number=nxt))
+                pos += 1
 
         if pos < n and tokens[pos] in (",", "und", "oder"):
             if pos + 1 < n and _LEVEL_RE.fullmatch(tokens[pos + 1]):
@@ -481,6 +488,11 @@ def _expand_multi_target(para_ref: ParagraphRef) -> list[ParagraphRef]:
     for sr in srs:
         rank = level_rank(sr.level)
         if sr.level in seen_levels:
+            # special case: second Buchst with double letter = unterbuchstabe,
+            # keep it in the same target rather than splitting
+            if sr.level == "Buchst" and re.match(r"^[a-z]{2}$", sr.number):
+                current.append(sr)
+                continue
             targets.append(current)
             current = [s for s in current if level_rank(s.level) < rank]
             seen_levels = {s.level for s in current}
