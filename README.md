@@ -6,8 +6,8 @@ Zero dependencies. Pure Python 3.10+.
 
 ## Contents
 <!-- no toc -->
+- [Simplified architecture](#simplified-architecture)
 - [Installation](#installation)
-- [Quick start](#quick-start)
 - [Parsing references](#parsing-references)
 - [Data model](#data-model)
 - [Normalising references](#normalising-references)
@@ -19,24 +19,21 @@ Zero dependencies. Pure Python 3.10+.
 - [Complete example](#complete-example)
 
 
+## Simplified architecture
+
+The library is built in three layers. The **parser** is the foundational *brick*, identifying the structure of any German citation string. The **normaliser** builds on the parser to handle expansion and produce canonical strings. The **resolver** builds on both to look up actual statutory text from the corpus.
+
+All three layers are exposed as public APIs. Use `parse()` when you only need structured extraction. Use `normalise()` when you need canonical strings without corpus lookup. Use `query()` when you need the actual statutory text.
+
+<p align="center">
+  <img src="examples/architecture.png" alt="Simplified architecture of the bundesrecht library" width="350">
+</p>
+
+
 ## Installation
 
 ```bash
 pip install bundesrecht
-```
-
-
-## Quick start
-
-```python
-from bundesrecht import Bundesrecht
-
-lib = Bundesrecht('data/gesetze.jsonl')
-
-results = lib.query('§ 242 BGB')
-for r in results:
-    print(r.titel())
-    print(r.full_text())
 ```
 
 
@@ -102,14 +99,14 @@ class SubReference:
 
 String representations:
 
-| level     | example output  |
-|-----------|-----------------|
-| Abs       | `Abs. 2`        |
-| Satz      | `Satz 1`        |
-| Nr        | `Nr. 3`         |
-| Buchst    | `Buchst. a`     |
-| Alt       | `Alt. 1`        |
-| Halbsatz  | `Halbsatz 2`    |
+| level    | example output |
+| -------- | -------------- |
+| Abs      | `Abs. 2`       |
+| Satz     | `Satz 1`       |
+| Nr       | `Nr. 3`        |
+| Buchst   | `Buchst. a`    |
+| Alt      | `Alt. 1`       |
+| Halbsatz | `Halbsatz 2`   |
 
 
 ## Normalising references
@@ -162,20 +159,20 @@ normalise('§ 312 ff. BGB', ff_expansion=5)
 
 ## What the normaliser handles
 
-| Input form                          | Output                                      |
-|-------------------------------------|---------------------------------------------|
-| `§ 312 i.V.m. § 355 BGB`           | `['§ 312 BGB', '§ 355 BGB']`               |
-| `§ 312 iVm § 355 BGB`              | `['§ 312 BGB', '§ 355 BGB']`               |
-| `§§ 12-15 BGB`                     | `['§ 12 BGB', ..., '§ 15 BGB']`            |
-| `§§ 12 bis 15 BGB`                 | same                                        |
-| `§§ 137 S. 2, 398 BGB`             | `['§ 137 Satz 2 BGB', '§ 398 BGB']`        |
-| `§§ 46 Abs. 2 ArbGG, 91 ZPO`      | `['§ 46 Abs. 2 ArbGG', '§ 91 ZPO']`       |
-| `§ 2 Abs. 1 Nr. 1, Nr. 7, Abs. 2` | three separate canonical refs               |
-| `§ 1 S. 2 BGB`                     | `['§ 1 Satz 2 BGB']`                       |
-| `§ 312 f. BGB`                     | `['§ 312 BGB', '§ 313 BGB']`               |
-| `§ 312 ff. BGB`                    | `['§ 312 ff. BGB']` (preserved by default) |
-| `§ 312 ff. BGB` (ff_expansion=3)   | `['§ 312 BGB', '§ 313 BGB', '§ 314 BGB']` |
-| `§312 BGB` (no space)              | `['§ 312 BGB']`                            |
+| Input form                        | Output                                     |
+| --------------------------------- | ------------------------------------------ |
+| `§ 312 i.V.m. § 355 BGB`          | `['§ 312 BGB', '§ 355 BGB']`               |
+| `§ 312 iVm § 355 BGB`             | `['§ 312 BGB', '§ 355 BGB']`               |
+| `§§ 12-15 BGB`                    | `['§ 12 BGB', ..., '§ 15 BGB']`            |
+| `§§ 12 bis 15 BGB`                | same                                       |
+| `§§ 137 S. 2, 398 BGB`            | `['§ 137 Satz 2 BGB', '§ 398 BGB']`        |
+| `§§ 46 Abs. 2 ArbGG, 91 ZPO`      | `['§ 46 Abs. 2 ArbGG', '§ 91 ZPO']`        |
+| `§ 2 Abs. 1 Nr. 1, Nr. 7, Abs. 2` | three separate canonical refs              |
+| `§ 1 S. 2 BGB`                    | `['§ 1 Satz 2 BGB']`                       |
+| `§ 312 f. BGB`                    | `['§ 312 BGB', '§ 313 BGB']`               |
+| `§ 312 ff. BGB`                   | `['§ 312 ff. BGB']` (preserved by default) |
+| `§ 312 ff. BGB` (ff_expansion=3)  | `['§ 312 BGB', '§ 313 BGB', '§ 314 BGB']`  |
+| `§312 BGB` (no space)             | `['§ 312 BGB']`                            |
 
 Ranges with letter suffixes (`§§ 12a-12c`) are left unchanged because
 intermediate values are not predictable.
@@ -187,6 +184,8 @@ intermediate values are not predictable.
 Load once, query as many times as you like.
 
 ```python
+from bundesrecht import Bundesrecht
+
 lib = Bundesrecht('data/gesetze.jsonl')
 ```
 
@@ -281,7 +280,7 @@ lib.available_laws[:5]
 Number of distinct laws loaded.
 
 ```python
-lib.law_count   # → 6867
+lib.law_count   # → 6873
 ```
 
 
@@ -316,7 +315,7 @@ r.titel()
 ### r.resolved_depth
 
 String indicating how deeply the reference was resolved.
-One of: `'buchstabe'`, `'nummer'`, `'absatz'`, `'section'`.
+One of: `'section'`, `'absatz'`, `'satz'`, `'nummer'`, `'buchstabe'`, `'unterbuchstabe'`.
 
 ```python
 r.resolved_depth   # → 'absatz'  (Absatz found, but no Nummer requested)
@@ -425,13 +424,13 @@ abs1 = bgb.get_absatz('433', '1')   # string also works
 
 ## Resolved depth reference
 
-| `resolved_depth` | Meaning                                          |
-|------------------|--------------------------------------------------|
-| `'section'`      | Only the paragraph was found (no sub-ref match)  |
-| `'absatz'`       | Absatz resolved; Nummer was not requested/found  |
-| `'nummer'`       | Nummer resolved; Buchstabe not requested/found   |
-| `'buchstabe'`    | Buchstabe resolved; Unterbuchstabe not requested/found |
-| `'unterbuchstabe'` | Fully resolved to Unterbuchstabe level (`aa)`, `bb)`) |
+| `resolved_depth`   | Meaning                                                |
+| ------------------ | ------------------------------------------------------ |
+| `'section'`        | Only the paragraph was found (no sub-ref match)        |
+| `'absatz'`         | Absatz resolved; Nummer was not requested/found        |
+| `'nummer'`         | Nummer resolved; Buchstabe not requested/found         |
+| `'buchstabe'`      | Buchstabe resolved; Unterbuchstabe not requested/found |
+| `'unterbuchstabe'` | Fully resolved to Unterbuchstabe level (`aa)`, `bb)`)  |
 
 
 ## Complete example
@@ -441,7 +440,7 @@ from bundesrecht import Bundesrecht, normalise, parse_reference
 
 # Load
 lib = Bundesrecht('data/gesetze.jsonl')
-print(lib)   # → Bundesrecht(6867 laws loaded)
+print(lib)   # → Bundesrecht(6873 laws loaded)
 
 # Parse only
 ref = parse_reference('§ 433 Abs. 1 Satz 1 BGB')
@@ -470,5 +469,5 @@ len(bgb.sections)                        # → 2541
 
 # List all laws
 lib.available_laws[:5]    # → ['1-DM-GOLDMÜNZG', '1. BESVNG', ...]
-lib.law_count             # → 6867
+lib.law_count             # → 6873
 ```
