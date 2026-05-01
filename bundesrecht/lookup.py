@@ -189,6 +189,51 @@ class LawData:
                 return text
         return None
 
+    def get_unterbuchstabe(
+        self,
+        paragraph: str,
+        absatz: Optional[Union[int, str]],
+        nummer: int,
+        buchstabe: str,
+        unterbuchstabe: str,
+    ) -> Optional[str]:
+        """Get a specific Unterbuchstabe text from within a Buchstabe.
+
+        Args:
+            paragraph: Paragraph number string.
+            absatz: Absatz identifier.
+            nummer: 1-based Nummer index.
+            buchstabe: Letter label, e.g. 'a', 'b'.
+            unterbuchstabe: Double-letter label, e.g. 'aa', 'bb'.
+
+        Returns:
+            The Unterbuchstabe text, or None if not found.
+        """
+        buch_text = self.get_buchstabe(paragraph, absatz, nummer, buchstabe)
+        if buch_text is None:
+            return None
+        nr_data = self.get_nummer(paragraph, absatz, nummer)
+        if not nr_data or not isinstance(nr_data, dict):
+            return None
+        buchstaben = nr_data.get("buchstaben", [])
+        label_b = f"{buchstabe})"
+        for buch in buchstaben:
+            text = buch.get("text", "") if isinstance(buch, dict) else str(buch)
+            if not (text.startswith(label_b) or text.startswith(f"{buchstabe} )")):
+                continue
+            label_u = f"{unterbuchstabe})"
+            for ubuch in (
+                buch.get("unterbuchstaben", []) if isinstance(buch, dict) else []
+            ):
+                u_text = (
+                    ubuch.get("text", "") if isinstance(ubuch, dict) else str(ubuch)
+                )
+                if u_text.lstrip().startswith(label_u) or u_text.lstrip().startswith(
+                    f"{unterbuchstabe} )"
+                ):
+                    return u_text
+        return None
+
 
 def _normalise_section_key(key: str) -> Optional[str]:
     """Convert section dict keys like '§ 312', 'Art 20' to a simple normalised form.
@@ -308,6 +353,14 @@ def _assemble_absatz(c: dict) -> str:
             buch_text = buch.get("text", "") if isinstance(buch, dict) else str(buch)
             if buch_text:
                 parts.append(buch_text)
+            for ubuch in (
+                buch.get("unterbuchstaben", []) if isinstance(buch, dict) else []
+            ):
+                u_text = (
+                    ubuch.get("text", "") if isinstance(ubuch, dict) else str(ubuch)
+                )
+                if u_text:
+                    parts.append(u_text)
     listenende = c.get("listenende", "")
     if listenende:
         parts.append(listenende)
@@ -325,6 +378,7 @@ class QueryResult:
     absatz_data: Optional[dict] = None
     satz_text: Optional[str] = None
     nummer_text: Optional[str] = None
+    unterbuchst_text: Optional[str] = None
     resolved_depth: str = "section"
     resolution_note: str = ""
     resolved_para: Optional["ParagraphRef"] = field(default=None)
@@ -336,6 +390,8 @@ class QueryResult:
         """
         if self.satz_text:
             return self.satz_text
+        if self.unterbuchst_text:
+            return _strip_leaf_prefix(self.unterbuchst_text, "buchstabe")
         if self.nummer_text:
             if isinstance(self.nummer_text, str):
                 return _strip_leaf_prefix(self.nummer_text, "buchstabe")
@@ -350,6 +406,18 @@ class QueryResult:
                     )
                     if buch_text:
                         parts.append(buch_text)
+                    for ubuch in (
+                        buch.get("unterbuchstaben", [])
+                        if isinstance(buch, dict)
+                        else []
+                    ):
+                        u_text = (
+                            ubuch.get("text", "")
+                            if isinstance(ubuch, dict)
+                            else str(ubuch)
+                        )
+                        if u_text:
+                            parts.append(u_text)
                 return " ".join(parts)
         if self.absatz_data:
             return _strip_leaf_prefix(_assemble_absatz(self.absatz_data), "absatz")
@@ -406,6 +474,10 @@ class QueryResult:
                                 if nr_lead:
                                     parts.append(_strip_leaf_prefix(nr_lead, "nummer"))
                 parts.append(_strip_leaf_prefix(self.nummer_text, "buchstabe"))
+
+        # append unterbuchstabe if resolved
+        if self.unterbuchst_text is not None:
+            parts.append(_strip_leaf_prefix(self.unterbuchst_text, "buchstabe"))
 
         if not parts:
             return self.full_text()
@@ -515,10 +587,12 @@ class LawLibrary:
         absatz_data = None
         satz_text = None
         nummer_text = None
+        unterbuchst_text_val = None
         abs_num = None
         satz_num = None
         nr_num = None
         buchst_num = None
+        unterbuchst_num = None
 
         for sr in para_ref.sub_refs:
             if sr.level == "Abs" and abs_num is None:
@@ -533,8 +607,13 @@ class LawLibrary:
                     nr_num = int(re.sub(r"[^0-9]", "", sr.number) or "0")
                 except ValueError:
                     pass
-            elif sr.level == "Buchst" and buchst_num is None:
-                buchst_num = sr.number.lower().rstrip(".")
+            elif sr.level == "Buchst":
+                letter = sr.number.lower().rstrip(".")
+                if buchst_num is None:
+                    buchst_num = letter
+                elif unterbuchst_num is None:
+                    # second Buchst sub_ref is the unterbuchstabe (e.g. aa, bb)
+                    unterbuchst_num = letter
 
         resolved_depth = "section"
         resolution_note = ""
@@ -625,6 +704,28 @@ class LawLibrary:
                             f"resolved to {pref} {para_ref.paragraph}"
                         )
 
+            # unterbuchstabe resolution
+            if (
+                absatz_data
+                and nr_num is not None
+                and buchst_num is not None
+                and unterbuchst_num is not None
+                and resolved_depth != "unterbuchstabe"
+            ):
+                u_text = law_data.get_unterbuchstabe(
+                    para_key, abs_num, nr_num, buchst_num, unterbuchst_num
+                )
+                if u_text is not None:
+                    unterbuchst_text_val = u_text
+                    resolved_depth = "unterbuchstabe"
+                else:
+                    pref = "Art." if ref.is_art else "§"
+                    resolution_note = (
+                        f"Unterbuchst. {unterbuchst_num} not found in "
+                        f"{pref} {para_ref.paragraph} Nr. {nr_num} Buchst. {buchst_num} - "
+                        f"resolved to Buchst. {buchst_num}"
+                    )
+
             # fallback: Buchst. requested without Nr. - some laws use letter-prefixed
             # nummer items (a), b)) instead of proper buchstaben inside a nummer.
             # scan nummer items for matching letter prefix.
@@ -661,6 +762,7 @@ class LawLibrary:
         return QueryResult(
             reference=ref,
             law_data=law_data,
+            unterbuchst_text=unterbuchst_text_val,
             section=section,
             absatz_data=absatz_data,
             satz_text=satz_text,
