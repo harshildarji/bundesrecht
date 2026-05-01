@@ -349,6 +349,63 @@ def test_query_buchstabe_bgb_309_nr8_buchst_a(lib):
     assert "Ausschluss des Rechts" in r[0].full_text()
 
 
+# unterbuchstaben resolution
+def test_query_unterbuchstabe_bgb_309_nr8_buchst_b_aa(lib):
+    # § 309 Nr. 8 Buchst. b Buchst. aa BGB - unterbuchstabe resolution
+    r = lib.query("§ 309 Nr. 8 Buchst. b Buchst. aa BGB")
+    assert r[0].resolved_depth == "unterbuchstabe"
+
+
+def test_query_unterbuchstabe_full_text_not_empty(lib):
+    r = lib.query("§ 309 Nr. 8 Buchst. b Buchst. aa BGB")
+    assert r[0].full_text() != ""
+
+
+def test_query_buchstabe_b_still_resolves_without_unterbuchstabe(lib):
+    # requesting only Buchst. b without unterbuchstabe should still work
+    r = lib.query("§ 309 Nr. 8 Buchst. b BGB")
+    assert r[0].resolved_depth == "buchstabe"
+    assert r[0].full_text() != ""
+
+
+def test_query_unterbuchstabe_aa_text_content(lib):
+    r = lib.query("§ 309 Nr. 8 Buchst. b Buchst. aa BGB")
+    assert r[0].resolved_depth == "unterbuchstabe"
+    assert "Ausschluss und Verweisung" in r[0].full_text()
+
+
+def test_query_unterbuchstabe_bb(lib):
+    r = lib.query("§ 309 Nr. 8 Buchst. b Buchst. bb BGB")
+    assert r[0].resolved_depth == "unterbuchstabe"
+    assert "Nacherfüllung" in r[0].full_text()
+
+
+def test_query_unterbuchstabe_cc(lib):
+    r = lib.query("§ 309 Nr. 8 Buchst. b Buchst. cc BGB")
+    assert r[0].resolved_depth == "unterbuchstabe"
+    assert "Aufwendungen" in r[0].full_text()
+
+
+def test_query_unterbuchstabe_ff(lib):
+    r = lib.query("§ 309 Nr. 8 Buchst. b Buchst. ff BGB")
+    assert r[0].resolved_depth == "unterbuchstabe"
+    assert "Verjährung" in r[0].full_text()
+
+
+def test_query_unterbuchstabe_lit_form(lib):
+    # lit. b lit. aa should resolve identically
+    r = lib.query("§ 309 Nr. 8 lit. b lit. aa BGB")
+    assert r[0].resolved_depth == "unterbuchstabe"
+    assert "Ausschluss und Verweisung" in r[0].full_text()
+
+
+def test_query_unterbuchstabe_not_found_falls_back(lib):
+    # zz) doesn't exist - should fall back to buchstabe with note
+    r = lib.query("§ 309 Nr. 8 Buchst. b Buchst. zz BGB")
+    assert r[0].resolved_depth in ("buchstabe", "nummer", "section")
+    assert r[0].resolution_note != ""
+
+
 # query - resolution failures
 def test_query_paragraph_not_found(lib):
     r = lib.query("§ 999999 BGB")
