@@ -11,8 +11,8 @@ build/
 *.zip
 token
 
-# benchmark outputs
-benchmark/evals/
+# eval outputs
+eval/evals/
 
 # examples
 examples/gesetze.jsonl

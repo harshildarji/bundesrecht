@@ -1,7 +1,7 @@
-# Benchmark Results
+# Evaluation Results
 
 **Dataset:** PaDaS-Lab/legal-reference-annotations (2944 references)  
-**Date:** 2026-05-01  
+**Date:** 2026-05-05  
 
 ## MODE 1: Strict Exact Match
 

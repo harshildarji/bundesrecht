@@ -5,8 +5,8 @@ PaDaS-Lab/legal-reference-annotations.
 Downloads the annotation dataset from HuggingFace at runtime.
 
 Usage:
-    python benchmark/benchmark_bundesrecht.py
-    python benchmark/benchmark_bundesrecht.py --print-report
+    python eval/eval_bundesrecht.py
+    python eval/eval_bundesrecht.py --print-report
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 
-# ensure the parser repo root is on the path when running from benchmark/
+# ensure the parser repo root is on the path when running from eval/
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 
@@ -158,8 +158,8 @@ class MicroResult:
         return 2 * p * r / (p + r) if (p + r) else 0.0
 
 
-# Parser + Normaliser benchmark
-def run_parser_benchmark(
+# Parser + Normaliser evaluation
+def run_parser_evaluation(
     rows: list[dict],
 ) -> tuple[dict[str, StrictResult], dict[str, MicroResult]]:
     from bundesrecht import normalise, parse_reference
@@ -296,7 +296,7 @@ def _build_report(
         buf.write(line + "\n")
 
     sep = "-" * 60
-    p(f"{sep}\n  Parser + Normaliser Benchmark\n{sep}")
+    p(f"{sep}\n  Parser + Normaliser Evaluation\n{sep}")
     p(f"\nLoaded {len(rows)} annotated references.")
 
     col = 12
@@ -331,13 +331,13 @@ def _build_report(
     return buf.getvalue()
 
 
-def _build_benchmarks_md(
+def _build_results_md(
     strict: dict[str, StrictResult],
     micro: dict[str, MicroResult],
     n_rows: int,
 ) -> str:
     lines = [
-        "# Benchmark Results",
+        "# Evaluation Results",
         "",
         f"**Dataset:** PaDaS-Lab/legal-reference-annotations ({n_rows} references)  ",
         f"**Date:** {datetime.date.today().isoformat()}  ",
@@ -413,7 +413,7 @@ def _write_evals(evals_dir: pathlib.Path, files: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Benchmark bundesrecht parser+normaliser against PaDaS-Lab/legal-reference-annotations"
+        description="Evaluate bundesrecht parser+normaliser against PaDaS-Lab/legal-reference-annotations"
     )
     parser.add_argument(
         "--print-report",
@@ -427,7 +427,7 @@ def main() -> None:
     evals_dir = script_dir / "evals"
 
     rows = _load_dataset()
-    strict, micro = run_parser_benchmark(rows)
+    strict, micro = run_parser_evaluation(rows)
 
     output: dict = {
         "n_rows": len(rows),
@@ -446,9 +446,9 @@ def main() -> None:
         },
     )
 
-    benchmarks_path = script_dir / "BENCHMARKS.md"
-    benchmarks_path.write_text(
-        _build_benchmarks_md(strict, micro, len(rows)),
+    results_path = script_dir / "RESULTS.md"
+    results_path.write_text(
+        _build_results_md(strict, micro, len(rows)),
         encoding="utf-8",
     )
 
@@ -459,7 +459,7 @@ def main() -> None:
     print(f"  results.json")
     print(f"  wrong.jsonl  ({len(wrong_rows)} rows)")
     print(f"  report.txt")
-    print(f"BENCHMARKS.md updated at {benchmarks_path}")
+    print(f"RESULTS.md updated at {results_path}")
 
 
 if __name__ == "__main__":

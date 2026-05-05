@@ -1,4 +1,4 @@
-# benchmark
+# eval
 
 Evaluates the `bundesrecht` parser and normaliser against
 [PaDaS-Lab/legal-reference-annotations](https://huggingface.co/datasets/PaDaS-Lab/legal-reference-annotations),
@@ -8,11 +8,11 @@ a dataset of 2,944 manually annotated German legal references.
 
 ```bash
 # from the parser/ root
-python benchmark/benchmark_bundesrecht.py
-python benchmark/benchmark_bundesrecht.py --print-report
+python eval/eval_bundesrecht.py
+python eval/eval_bundesrecht.py --print-report
 ```
 
-Output is written to `benchmark/evals/`:
+Output is written to `eval/evals/`:
 
 | File | Description |
 |------|-------------|
@@ -20,7 +20,7 @@ Output is written to `benchmark/evals/`:
 | `wrong.jsonl` | Mismatched rows for analysis |
 | `report.txt` | Full human-readable report |
 
-`BENCHMARKS.md` is written to `benchmark/` and should be committed after each run.
+`RESULTS.md` is written to `eval/` and should be committed after each run.
 
 ## Evaluation
 
