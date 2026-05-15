@@ -467,12 +467,11 @@ class QueryResult:
                                 pass
                     if nr_ref is not None:
                         nummern = self.absatz_data.get("nummer", [])
-                        if 1 <= nr_ref <= len(nummern):
-                            nr_dict = nummern[nr_ref - 1]
-                            if isinstance(nr_dict, dict):
-                                nr_lead = nr_dict.get("text", "")
-                                if nr_lead:
-                                    parts.append(_strip_leaf_prefix(nr_lead, "nummer"))
+                        nr_dict = LawData._match_nummer(nummern, nr_ref)
+                        if nr_dict is not None and isinstance(nr_dict, dict):
+                            nr_lead = nr_dict.get("text", "")
+                            if nr_lead:
+                                parts.append(_strip_leaf_prefix(nr_lead, "nummer"))
                 parts.append(_strip_leaf_prefix(self.nummer_text, "buchstabe"))
 
         # append unterbuchstabe if resolved

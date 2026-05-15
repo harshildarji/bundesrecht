@@ -1,6 +1,6 @@
 import pytest
 
-from bundesrecht import Bundesrecht, normalise, parse_reference
+from bundesrecht import Bundesrecht, LawData, QueryResult, normalise, parse_reference
 
 
 @pytest.fixture(scope="session")
@@ -835,3 +835,74 @@ def test_art_45a_gg_is_article_number():
     assert r.paragraphs[0].paragraph == "45a"
     assert r.paragraphs[0].sub_refs == []
     assert r.law == "GG"
+
+
+# normkette() positional bug regression - _match_nummer must be used, not nummern[nr_ref - 1]
+def test_normkette_gapped_nummern_uses_match_not_position():
+    ref = parse_reference("§ 1 Abs. 1 Nr. 2 Buchst. b TestG")
+    absatz_data = {
+        "absatz": "(1) intro text:",
+        "nummer": [
+            {"text": "1. first nummer", "buchstaben": []},
+            {"text": "1a. first-a nummer", "buchstaben": []},
+            {"text": "2. second nummer", "buchstaben": [{"text": "b) buchstabe b"}]},
+        ],
+    }
+    result = QueryResult(
+        reference=ref,
+        law_data=LawData({"jurabk": "TestG", "sections": []}),
+        absatz_data=absatz_data,
+        nummer_text="b) buchstabe b",
+        resolved_depth="buchstabe",
+    )
+    chain = result.normkette()
+    assert (
+        "second nummer" in chain
+    ), f"Expected Nr. 2 lead 'second nummer' in chain; got: {chain!r}"
+    assert (
+        "first-a" not in chain
+    ), f"Got Nr. 1a (positional index 1) instead of Nr. 2: {chain!r}"
+
+
+# normkette() must still work correctly for sequential Nummern after the fix
+def test_normkette_sequential_nummern_unaffected():
+    ref = parse_reference("§ 1 Abs. 1 Nr. 2 Buchst. a TestG")
+    absatz_data = {
+        "absatz": "(1) intro text:",
+        "nummer": [
+            {"text": "1. first nummer", "buchstaben": []},
+            {"text": "2. second nummer", "buchstaben": [{"text": "a) buchstabe a"}]},
+        ],
+    }
+    result = QueryResult(
+        reference=ref,
+        law_data=LawData({"jurabk": "TestG", "sections": []}),
+        absatz_data=absatz_data,
+        nummer_text="a) buchstabe a",
+        resolved_depth="buchstabe",
+    )
+    chain = result.normkette()
+    assert (
+        "second nummer" in chain
+    ), f"Expected Nr. 2 lead 'second nummer' in chain; got: {chain!r}"
+
+
+# normkette() must not crash when Nr. exceeds the nummern list length
+def test_normkette_nr_beyond_list_returns_no_lead():
+    ref = parse_reference("§ 1 Abs. 1 Nr. 5 Buchst. a TestG")
+    absatz_data = {
+        "absatz": "(1) intro text:",
+        "nummer": [
+            {"text": "1. only nummer", "buchstaben": []},
+        ],
+    }
+    result = QueryResult(
+        reference=ref,
+        law_data=LawData({"jurabk": "TestG", "sections": []}),
+        absatz_data=absatz_data,
+        nummer_text="a) buchstabe a",
+        resolved_depth="buchstabe",
+    )
+    chain = result.normkette()
+    assert "buchstabe a" in chain
+    assert "only nummer" not in chain
