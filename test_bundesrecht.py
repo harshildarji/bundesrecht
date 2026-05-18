@@ -285,6 +285,40 @@ def test_query_nummer_without_abs_multi_content_gets_note(lib):
     assert "Nr. 2" in r[0].resolution_note
 
 
+def test_query_hwg_11_abs1_nr1_without_satz_uses_first_list_group(lib):
+    r = lib.query("§ 11 Abs. 1 Nr. 1 HWG")
+    assert r[0].resolved_depth == "nummer"
+    assert r[0].full_text() == "(weggefallen)"
+
+
+def test_query_hwg_4_abs1_full_text_keeps_single_dl_listenende(lib):
+    r = lib.query("§ 4 Abs. 1 HWG")
+    assert r[0].resolved_depth == "absatz"
+    text = r[0].full_text()
+    assert "1. den Namen oder die Firma" in text
+    assert "7a. bei Arzneimitteln" in text
+    assert "Traditionelles pflanzliches Arzneimittel" in text
+
+
+def test_query_hwg_4_section_full_text_keeps_absatz_listenende(lib):
+    r = lib.query("§ 4 HWG")
+    assert r[0].resolved_depth == "section"
+    text = r[0].full_text()
+    assert "1. den Namen oder die Firma" in text
+    assert "Traditionelles pflanzliches Arzneimittel" in text
+    assert "(6) Die Absätze 1, 1a, 3 und 5 gelten nicht" in text
+
+
+def test_query_hwg_7_abs1_full_text_keeps_listenende_sentences(lib):
+    r = lib.query("§ 7 Abs. 1 HWG")
+    assert r[0].resolved_depth == "absatz"
+    text = r[0].full_text()
+    assert "1. es sich bei den Zuwendungen" in text
+    assert "5. es sich um unentgeltlich" in text
+    assert "Werbegaben für Angehörige der Heilberufe" in text
+    assert "§ 47 Abs. 3 des Arzneimittelgesetzes" in text
+
+
 def test_query_buchst_not_found_gets_note(lib):
     # § 5 HWG has no Buchstabe structure - falls back to absatz with a note
     r = lib.query("§ 5 Buchst. c HWG")
