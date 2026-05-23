@@ -91,6 +91,10 @@ class LawData:
     ) -> Optional[str]:
         """Get a specific Satz from within an Absatz.
 
+        For multi-DL paragraphs (detected via structured listenende bridge entries),
+        uses the in-memory Satz context from _preprocess_satz_context. For simple
+        paragraphs, falls back to splitting the absatz lead text.
+
         Args:
             paragraph: Paragraph number string.
             absatz: Absatz number, or None to use the first content item.
@@ -110,6 +114,15 @@ class LawData:
         if not abs_data:
             return None
 
+        # Multi-DL paragraph: use precomputed Satz contexts
+        contexts = _preprocess_satz_context(abs_data)
+        if contexts:
+            for ctx in contexts:
+                if ctx["satz_num"] == satz:
+                    return ctx["text"]
+            return None
+
+        # Simple paragraph: split absatz lead text into sentences
         text = abs_data.get("absatz", "")
         text = re.sub(r"^\(\d+\w*\)\s*", "", text)
         sentences = _split_sentences(text)
@@ -134,14 +147,22 @@ class LawData:
         return None
 
     def get_nummer(
-        self, paragraph: str, absatz: Optional[Union[int, str]], nummer: int
+        self,
+        paragraph: str,
+        absatz: Optional[Union[int, str]],
+        nummer: int,
+        nr_range: Optional[tuple] = None,
     ) -> Optional[dict]:
         """Get a specific Nummer item from an Absatz.
 
         Args:
             paragraph: Paragraph number string.
             absatz: Absatz identifier, or None to use the first content item.
-            nummer: 1-based Nummer index.
+            nummer: 1-based Nummer label to match (matched by text prefix, e.g. "2.").
+            nr_range: Optional (start, end) index tuple restricting the search to a
+                slice of the nummer list. Used when a Satz qualifier narrows the
+                applicable DL group. start is inclusive, end is exclusive (None = to end).
+                Supplied by _resolve_paragraph when both Satz and Nr are requested.
 
         Returns:
             The Nummer dict (with text + buchstaben), or None if not found.
@@ -158,6 +179,11 @@ class LawData:
             return None
 
         nummern = abs_data.get("nummer", [])
+        if nr_range is not None:
+            start, end = nr_range
+            start = start if start is not None else 0
+            nummern = nummern[start:end]
+
         return self._match_nummer(nummern, nummer)
 
     def get_buchstabe(
@@ -166,6 +192,7 @@ class LawData:
         absatz: Optional[Union[int, str]],
         nummer: int,
         buchstabe: str,
+        nr_dict: Optional[dict] = None,
     ) -> Optional[str]:
         """Get a specific Buchstabe text from within a Nummer.
 
@@ -174,18 +201,25 @@ class LawData:
             absatz: Absatz identifier.
             nummer: 1-based Nummer index.
             buchstabe: Letter label, e.g. 'a', 'b', 'c'.
+            nr_dict: Optional pre-resolved Nummer dict. When given (e.g. from a
+                Satz-constrained get_nummer call), the Nummer re-lookup is skipped.
+                This ensures the buchstabe is resolved within the correct DL group
+                when Nummer labels restart across groups.
 
         Returns:
             The Buchstabe text, or None if not found.
         """
-        nr_data = self.get_nummer(paragraph, absatz, nummer)
-        if not nr_data or not isinstance(nr_data, dict):
+        if nr_dict is None:
+            nr_dict = self.get_nummer(paragraph, absatz, nummer)
+        if not nr_dict or not isinstance(nr_dict, dict):
             return None
-        buchstaben = nr_data.get("buchstaben", [])
+        buchstaben = nr_dict.get("buchstaben", [])
         label = f"{buchstabe})"
         for buch in buchstaben:
             text = buch.get("text", "") if isinstance(buch, dict) else str(buch)
-            if text.startswith(label) or text.startswith(f"{buchstabe} )"):
+            if text.lstrip().startswith(label) or text.lstrip().startswith(
+                f"{buchstabe} )"
+            ):
                 return text
         return None
 
@@ -196,6 +230,7 @@ class LawData:
         nummer: int,
         buchstabe: str,
         unterbuchstabe: str,
+        nr_dict: Optional[dict] = None,
     ) -> Optional[str]:
         """Get a specific Unterbuchstabe text from within a Buchstabe.
 
@@ -205,17 +240,22 @@ class LawData:
             nummer: 1-based Nummer index.
             buchstabe: Letter label, e.g. 'a', 'b'.
             unterbuchstabe: Double-letter label, e.g. 'aa', 'bb'.
+            nr_dict: Optional pre-resolved Nummer dict. When applied (e.g. from a
+                Satz-constrained get_nummer call), the Nummer re-lookup is skipped so
+                the unterbuchstabe resolves within the correct DL group when labels
+                restart.
 
         Returns:
             The Unterbuchstabe text, or None if not found.
         """
-        buch_text = self.get_buchstabe(paragraph, absatz, nummer, buchstabe)
-        if buch_text is None:
+        if nr_dict is None:
+            buch_text = self.get_buchstabe(paragraph, absatz, nummer, buchstabe)
+            if buch_text is None:
+                return None
+            nr_dict = self.get_nummer(paragraph, absatz, nummer)
+        if not nr_dict or not isinstance(nr_dict, dict):
             return None
-        nr_data = self.get_nummer(paragraph, absatz, nummer)
-        if not nr_data or not isinstance(nr_data, dict):
-            return None
-        buchstaben = nr_data.get("buchstaben", [])
+        buchstaben = nr_dict.get("buchstaben", [])
         label_b = f"{buchstabe})"
         for buch in buchstaben:
             text = buch.get("text", "") if isinstance(buch, dict) else str(buch)
@@ -323,6 +363,229 @@ def _split_sentences(text: str) -> list[str]:
     return [s for s in sentences if s]
 
 
+def _validate_listenende(listenende: object, context: str = "") -> list:
+    """Validate and return a structured listenende list.
+
+    Args:
+        listenende: The value from a JSONL content block's "listenende" key.
+        context: Optional label for error messages.
+
+    Returns:
+        The listenende list, or [] if absent/None.
+
+    Raises:
+        ValueError: If the old string schema is detected.
+        TypeError: If an entry is not a dict or has a wrong field type.
+        KeyError: If an entry is missing a required key.
+    """
+    if isinstance(listenende, str):
+        ctx_str = f" (at {context})" if context else ""
+        raise ValueError(
+            f"Old string listenende schema detected{ctx_str}. "
+            "The corpus uses the old schema and must be regenerated."
+        )
+    if not listenende:
+        return []
+    entries = list(listenende)
+    ctx_str = f" (at {context})" if context else ""
+    valid_levels = {"absatz", "nummer", "buchstabe", "unterbuchstabe"}
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise TypeError(
+                f"listenende[{i}] must be a dict, got {type(entry).__name__}{ctx_str}"
+            )
+        for required in ("level", "start", "end", "text"):
+            if required not in entry:
+                raise KeyError(
+                    f"listenende[{i}] missing required key '{required}'{ctx_str}"
+                )
+        if entry["level"] not in valid_levels:
+            raise ValueError(
+                f"listenende[{i}]['level'] must be one of {valid_levels}, "
+                f"got {entry['level']!r}{ctx_str}"
+            )
+        if not isinstance(entry["text"], str):
+            raise TypeError(
+                f"listenende[{i}]['text'] must be str, "
+                f"got {type(entry['text']).__name__}{ctx_str}"
+            )
+        start = entry["start"]
+        if start is not None and not isinstance(start, int):
+            raise TypeError(
+                f"listenende[{i}]['start'] must be int or None, "
+                f"got {type(start).__name__}{ctx_str}"
+            )
+        end = entry["end"]
+        if end is not None and not isinstance(end, int):
+            raise TypeError(
+                f"listenende[{i}]['end'] must be int or None, "
+                f"got {type(end).__name__}{ctx_str}"
+            )
+    return entries
+
+
+def _preprocess_satz_context(absatz_data: dict) -> list[dict]:
+    """Build in-memory Satz context for paragraphs with multiple top-level DL groups.
+
+    Detects multi-DL structure by looking for absatz-level listenende entries
+    with a non-null end index (these connect two DL groups). For simple paragraphs
+    (single DL or no DL), returns an empty list so callers use existing behavior.
+
+    Args:
+        absatz_data: One content block dict from the JSONL.
+
+    Returns:
+        List of Satz context dicts, each with:
+          satz_num : 1-based Satz number
+          text     : sentence text (absatz lead or a sentence from a bridge tail)
+          nr_start : inclusive start index into nummer list, or None
+          nr_end   : exclusive end index into nummer list, or None
+        Empty list when no multi-DL bridge entries exist.
+
+    Example for HWG § 11 Abs. 1 (first DL has 15 items, second has 2):
+        [{satz_num:1, text:"Ausserhalb...", nr_start:0, nr_end:15},
+         {satz_num:2, text:"Fur Medizinprodukte...", nr_start:None, nr_end:None},
+         {satz_num:3, text:"Ferner darf...", nr_start:15, nr_end:None}]
+    """
+    listenende = _validate_listenende(absatz_data.get("listenende", []))
+    absatz_entries = [
+        e for e in listenende if isinstance(e, dict) and e.get("level") == "absatz"
+    ]
+    bridge_entries = [e for e in absatz_entries if e.get("end") is not None]
+
+    if not bridge_entries:
+        return []
+
+    absatz_text = re.sub(r"^\(\d+\w*\)\s*", "", absatz_data.get("absatz", ""))
+    contexts: list[dict] = []
+    satz_num = 1
+
+    # Satz 1: the absatz lead text governs the first DL group
+    first_bridge = bridge_entries[0]
+    contexts.append(
+        {
+            "satz_num": satz_num,
+            "text": absatz_text,
+            "nr_start": 0,
+            "nr_end": first_bridge["end"],
+        }
+    )
+    satz_num += 1
+
+    for b_idx, bridge in enumerate(bridge_entries):
+        tail_text = (bridge.get("text") or "").strip()
+        sentences = _split_sentences(tail_text) if tail_text else []
+
+        # Determine the nr range for the DL group following this bridge
+        if b_idx + 1 < len(bridge_entries):
+            next_nr_end = bridge_entries[b_idx + 1]["end"]
+        else:
+            next_nr_end = None
+        nr_range_start = bridge["end"]
+
+        if not sentences:
+            continue
+
+        # All sentences except the last are standalone Sätze (no DL governed)
+        for sentence in sentences[:-1]:
+            contexts.append(
+                {
+                    "satz_num": satz_num,
+                    "text": sentence,
+                    "nr_start": None,
+                    "nr_end": None,
+                }
+            )
+            satz_num += 1
+
+        # Last sentence: only governs the following DL if it ends with a colon.
+        # A non-colon ending means it is also standalone and the following DL has
+        # no explicit intro Satz text.  This prevents over-attaching DL groups in
+        # paragraphs where the tail does not grammatically introduce a list.
+        last_sentence = sentences[-1]
+        if last_sentence.rstrip().endswith(":"):
+            contexts.append(
+                {
+                    "satz_num": satz_num,
+                    "text": last_sentence,
+                    "nr_start": nr_range_start,
+                    "nr_end": next_nr_end,
+                }
+            )
+            satz_num += 1
+        else:
+            # No colon: last sentence is standalone too. The following DL group
+            # has no named Satz intro and is only reachable via Nr without Satz.
+            contexts.append(
+                {
+                    "satz_num": satz_num,
+                    "text": last_sentence,
+                    "nr_start": None,
+                    "nr_end": None,
+                }
+            )
+            satz_num += 1
+
+    return contexts
+
+
+def _collect_buchstabe_listenende(
+    absatz_data: dict, reference: "LawReference"
+) -> list[str]:
+    """Collect listenende texts from the resolved buchstabe dict.
+
+    Used by QueryResult.full_text() at buchstabe depth to include the
+    buchstabe's closing clause in the assembled text.
+
+    Args:
+        absatz_data: Content block from the JSONL.
+        reference: The parsed law reference (supplies nr_num, buchst_num, satz_num).
+
+    Returns:
+        List of listenende text strings for the resolved buchstabe, or [].
+    """
+    if absatz_data is None or not reference.paragraphs:
+        return []
+    nr_ref = buchst_ref = satz_ref = None
+    for sr in reference.paragraphs[0].sub_refs:
+        if sr.level == "Nr" and nr_ref is None:
+            try:
+                nr_ref = int(sr.number)
+            except ValueError:
+                pass
+        elif sr.level == "Buchst" and buchst_ref is None:
+            buchst_ref = sr.number.lower().rstrip(".")
+        elif sr.level == "Satz" and satz_ref is None:
+            try:
+                satz_ref = int(sr.number)
+            except ValueError:
+                pass
+    if nr_ref is None or buchst_ref is None:
+        return []
+    nummern = absatz_data.get("nummer", [])
+    if satz_ref is not None:
+        for ctx in _preprocess_satz_context(absatz_data):
+            if ctx["satz_num"] == satz_ref:
+                start = ctx["nr_start"] if ctx["nr_start"] is not None else 0
+                nummern = nummern[start : ctx["nr_end"]]
+                break
+    nr_dict = LawData._match_nummer(nummern, nr_ref)
+    if not isinstance(nr_dict, dict):
+        return []
+    label = f"{buchst_ref})"
+    for buch in nr_dict.get("buchstaben", []):
+        if not isinstance(buch, dict):
+            continue
+        btext = buch.get("text", "").lstrip()
+        if btext.startswith(label) or btext.startswith(f"{buchst_ref} )"):
+            return [
+                le.get("text", "").strip()
+                for le in buch.get("listenende", [])
+                if isinstance(le, dict) and le.get("text", "").strip()
+            ]
+    return []
+
+
 def _strip_leaf_prefix(text: str, depth: str) -> str:
     """Strip leading notation prefix only at the resolved leaf level."""
     if not text:
@@ -339,32 +602,76 @@ def _strip_leaf_prefix(text: str, depth: str) -> str:
 def _assemble_absatz(c: dict) -> str:
     """Assemble the full text of a content item.
 
-    Combines lead-in text (absatz), all Nummern, and Listenende.
+    Inserts absatz-level listenende entries at their correct positions between
+    Nummern so reading order is preserved for multi-DL paragraphs. Nested
+    listenende entries (at nummer/buchstabe level) are included inline after
+    their parent item.
+
+    Raises:
+        ValueError: If listenende uses the old string schema. The corpus must
+            be regenerated.
     """
     parts = []
     lead = c.get("absatz", "")
     if lead:
         parts.append(lead)
-    for nr in c.get("nummer", []):
+
+    listenende = _validate_listenende(c.get("listenende", []), "absatz")
+
+    # Build positional insertion map: insert after nummer[idx] → [text, ...]
+    tail_inserts: dict[int, list[str]] = {}
+    for entry in listenende:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("level") != "absatz":
+            continue
+        text = (entry.get("text") or "").strip()
+        if not text:
+            continue
+        start = entry.get("start")
+        insert_after = start if start is not None else -1
+        tail_inserts.setdefault(insert_after, []).append(text)
+
+    # Pre-list entries (start=None edge case)
+    for txt in tail_inserts.get(-1, []):
+        parts.append(txt)
+
+    for idx, nr in enumerate(c.get("nummer", [])):
         nr_text = nr.get("text", "") if isinstance(nr, dict) else str(nr)
         if nr_text:
             parts.append(nr_text)
-        for buch in nr.get("buchstaben", []) if isinstance(nr, dict) else []:
-            buch_text = buch.get("text", "") if isinstance(buch, dict) else str(buch)
-            if buch_text:
-                parts.append(buch_text)
-            for ubuch in (
-                buch.get("unterbuchstaben", []) if isinstance(buch, dict) else []
-            ):
-                u_text = (
-                    ubuch.get("text", "") if isinstance(ubuch, dict) else str(ubuch)
+        if isinstance(nr, dict):
+            for buch in nr.get("buchstaben", []):
+                buch_text = (
+                    buch.get("text", "") if isinstance(buch, dict) else str(buch)
                 )
-                if u_text:
-                    parts.append(u_text)
-    listenende = c.get("listenende", "")
-    if listenende:
-        parts.append(listenende)
-    return " ".join(parts)
+                if buch_text:
+                    parts.append(buch_text)
+                if isinstance(buch, dict):
+                    for ubuch in buch.get("unterbuchstaben", []):
+                        u_text = (
+                            ubuch.get("text", "")
+                            if isinstance(ubuch, dict)
+                            else str(ubuch)
+                        )
+                        if u_text:
+                            parts.append(u_text)
+                    for le in buch.get("listenende", []):
+                        if isinstance(le, dict):
+                            le_text = (le.get("text") or "").strip()
+                            if le_text:
+                                parts.append(le_text)
+            for le in nr.get("listenende", []):
+                if isinstance(le, dict):
+                    le_text = (le.get("text") or "").strip()
+                    if le_text:
+                        parts.append(le_text)
+
+        # Insert absatz-level listenende entry after this nummer item
+        for txt in tail_inserts.get(idx, []):
+            parts.append(txt)
+
+    return " ".join(p for p in parts if p)
 
 
 # Result Object
@@ -386,15 +693,23 @@ class QueryResult:
     def full_text(self) -> str:
         """Return the most specific text found for the reference.
 
-        Resolution priority: Satz → Nummer → Absatz → full section content.
+        Branches by resolved_depth so that a Satz+Nr query at nummer depth
+        returns the Nummer text, not the broader Satz intro text.
         """
-        if self.satz_text:
+        if self.resolved_depth == "satz" and self.satz_text:
             return self.satz_text
         if self.unterbuchst_text:
             return _strip_leaf_prefix(self.unterbuchst_text, "buchstabe")
         if self.nummer_text:
             if isinstance(self.nummer_text, str):
-                return _strip_leaf_prefix(self.nummer_text, "buchstabe")
+                leaf_text = _strip_leaf_prefix(self.nummer_text, "buchstabe")
+                if self.resolved_depth == "buchstabe":
+                    buch_le = _collect_buchstabe_listenende(
+                        self.absatz_data, self.reference
+                    )
+                    if buch_le:
+                        leaf_text = " ".join([leaf_text] + buch_le)
+                return leaf_text
             if isinstance(self.nummer_text, dict):
                 nr_text = self.nummer_text.get("text", "")
                 parts = []
@@ -406,18 +721,25 @@ class QueryResult:
                     )
                     if buch_text:
                         parts.append(buch_text)
-                    for ubuch in (
-                        buch.get("unterbuchstaben", [])
-                        if isinstance(buch, dict)
-                        else []
-                    ):
-                        u_text = (
-                            ubuch.get("text", "")
-                            if isinstance(ubuch, dict)
-                            else str(ubuch)
-                        )
-                        if u_text:
-                            parts.append(u_text)
+                    if isinstance(buch, dict):
+                        for ubuch in buch.get("unterbuchstaben", []):
+                            u_text = (
+                                ubuch.get("text", "")
+                                if isinstance(ubuch, dict)
+                                else str(ubuch)
+                            )
+                            if u_text:
+                                parts.append(u_text)
+                        for le in buch.get("listenende", []):
+                            if isinstance(le, dict):
+                                le_text = (le.get("text") or "").strip()
+                                if le_text:
+                                    parts.append(le_text)
+                for le in self.nummer_text.get("listenende", []):
+                    if isinstance(le, dict):
+                        le_text = (le.get("text") or "").strip()
+                        if le_text:
+                            parts.append(le_text)
                 return " ".join(parts)
         if self.absatz_data:
             return _strip_leaf_prefix(_assemble_absatz(self.absatz_data), "absatz")
@@ -443,6 +765,12 @@ class QueryResult:
             lead = self.absatz_data.get("absatz", "")
             if lead:
                 parts.append(_strip_leaf_prefix(lead.rstrip(":").strip(), "absatz"))
+            if self.satz_text:
+                satz_part = _strip_leaf_prefix(
+                    self.satz_text.rstrip(":").strip(), "satz"
+                )
+                if satz_part and satz_part not in parts:
+                    parts.append(satz_part)
 
         if self.nummer_text is not None:
             if isinstance(self.nummer_text, dict):
@@ -455,6 +783,7 @@ class QueryResult:
             elif isinstance(self.nummer_text, str):
                 if self.absatz_data:
                     nr_ref = None
+                    satz_ref_num = None
                     for sr in (
                         self.reference.paragraphs[0].sub_refs
                         if self.reference.paragraphs
@@ -465,8 +794,26 @@ class QueryResult:
                                 nr_ref = int(sr.number)
                             except ValueError:
                                 pass
+                        elif sr.level == "Satz":
+                            try:
+                                satz_ref_num = int(sr.number)
+                            except ValueError:
+                                pass
                     if nr_ref is not None:
                         nummern = self.absatz_data.get("nummer", [])
+                        # Restrict to the Satz's nr range so restarted labels resolve correctly
+                        if satz_ref_num is not None:
+                            satz_contexts = _preprocess_satz_context(self.absatz_data)
+                            for ctx in satz_contexts:
+                                if ctx["satz_num"] == satz_ref_num:
+                                    start = (
+                                        ctx["nr_start"]
+                                        if ctx["nr_start"] is not None
+                                        else 0
+                                    )
+                                    end = ctx["nr_end"]
+                                    nummern = nummern[start:end]
+                                    break
                         nr_dict = LawData._match_nummer(nummern, nr_ref)
                         if nr_dict is not None and isinstance(nr_dict, dict):
                             nr_lead = nr_dict.get("text", "")
@@ -515,6 +862,7 @@ class LawLibrary:
         self._load(Path(path))
 
     def _load(self, path: Path) -> None:
+        pending_aliases: list[tuple[str, LawData]] = []
         with path.open(encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
@@ -530,9 +878,11 @@ class LawLibrary:
                     self._laws[key] = law
                     amtabk = law.metadaten.get("amtabk", "").upper()
                     if amtabk and amtabk != key:
-                        self._laws[amtabk] = law
+                        pending_aliases.append((amtabk, law))
                     if law.gesetze_id:
                         self._laws[law.gesetze_id] = law
+        for alias, law in pending_aliases:
+            self._laws.setdefault(alias, law)
 
     @property
     def available_laws(self) -> list[str]:
@@ -592,6 +942,7 @@ class LawLibrary:
         nr_num = None
         buchst_num = None
         unterbuchst_num = None
+        satz_context_blocks_subrefs = False
 
         for sr in para_ref.sub_refs:
             if sr.level == "Abs" and abs_num is None:
@@ -656,10 +1007,14 @@ class LawLibrary:
                     )
 
             if absatz_data and satz_num is not None:
+                # Precompute once, used by both Satz resolution and Nr range constraint.
+                satz_contexts = _preprocess_satz_context(absatz_data)
+                satz_found = False
                 try:
                     satz_text = law_data.get_satz(para_key, abs_num, int(satz_num))
                     if satz_text:
                         resolved_depth = "satz"
+                        satz_found = True
                     else:
                         pref = "Art." if ref.is_art else "§"
                         resolution_note = (
@@ -668,40 +1023,94 @@ class LawLibrary:
                             f"resolved to Abs. {abs_num}"
                         )
                 except (ValueError, TypeError):
-                    pass
+                    satz_contexts = []
+            else:
+                satz_contexts = []
+                satz_found = False
 
             if absatz_data and nr_num is not None:
-                nummer_text = law_data.get_nummer(para_key, abs_num, nr_num)
-                if nummer_text is not None:
-                    resolved_depth = "nummer"
-                    if buchst_num is not None:
-                        buchst_text = law_data.get_buchstabe(
-                            para_key, abs_num, nr_num, buchst_num
-                        )
-                        if buchst_text is not None:
-                            nummer_text = buchst_text
-                            resolved_depth = "buchstabe"
-                        else:
-                            pref = "Art." if ref.is_art else "§"
-                            resolution_note = (
-                                f"Buchst. {buchst_num} not found in "
-                                f"{pref} {para_ref.paragraph} Abs. {abs_num} Nr. {nr_num} - "
-                                f"resolved to Nr. {nr_num}"
-                            )
-                else:
-                    pref = "Art." if ref.is_art else "§"
-                    if abs_num is not None:
+                nr_range = None
+                skip_nr = False
+                nr_dict_for_sub = None  # preserved for unterbuchstabe lookup below
+
+                if satz_num is not None and satz_contexts:
+                    # Multi-DL paragraph: Satz qualifier determines the allowed Nr range.
+                    ctx_match = next(
+                        (c for c in satz_contexts if c["satz_num"] == satz_num), None
+                    )
+                    if ctx_match is None:
+                        # Satz not found in multi-DL context: unconstrained Nr would
+                        # be misleading - do not resolve Nr.
+                        skip_nr = True
+                        satz_context_blocks_subrefs = True
+                    elif ctx_match["nr_start"] is None and ctx_match["nr_end"] is None:
+                        # Standalone Satz: no DL group governed, Nr not applicable.
+                        skip_nr = True
+                        satz_context_blocks_subrefs = True
+                        pref = "Art." if ref.is_art else "§"
                         resolution_note = (
-                            f"Nr. {nr_num} not found in "
-                            f"{pref} {para_ref.paragraph} Abs. {abs_num} - "
-                            f"resolved to Abs. {abs_num}"
+                            f"Satz {satz_num} is standalone (no Nummer list) in "
+                            f"{pref} {para_ref.paragraph} Abs. {abs_num}"
                         )
                     else:
-                        resolution_note = (
-                            f"Nr. {nr_num} not found in "
-                            f"{pref} {para_ref.paragraph} - "
-                            f"resolved to {pref} {para_ref.paragraph}"
+                        nr_range = (ctx_match["nr_start"], ctx_match["nr_end"])
+
+                if not skip_nr:
+                    nummer_text = law_data.get_nummer(
+                        para_key, abs_num, nr_num, nr_range=nr_range
+                    )
+                    if isinstance(nummer_text, dict):
+                        nr_dict_for_sub = (
+                            nummer_text  # save before potential replacement
                         )
+                    if nummer_text is not None:
+                        resolved_depth = "nummer"
+                        if buchst_num is not None:
+                            # Pass the already-resolved Nummer dict so get_buchstabe
+                            # does not redo the lookup and accidentally pick from the
+                            # wrong DL group when labels restart.
+                            buchst_text = law_data.get_buchstabe(
+                                para_key,
+                                abs_num,
+                                nr_num,
+                                buchst_num,
+                                nr_dict=(
+                                    nummer_text
+                                    if isinstance(nummer_text, dict)
+                                    else None
+                                ),
+                            )
+                            if buchst_text is not None:
+                                nummer_text = buchst_text
+                                resolved_depth = "buchstabe"
+                            else:
+                                pref = "Art." if ref.is_art else "§"
+                                resolution_note = (
+                                    f"Buchst. {buchst_num} not found in "
+                                    f"{pref} {para_ref.paragraph} Abs. {abs_num} Nr. {nr_num} - "
+                                    f"resolved to Nr. {nr_num}"
+                                )
+                    else:
+                        pref = "Art." if ref.is_art else "§"
+                        if satz_num is not None and satz_found:
+                            # Nr not found under a resolved Satz - report at Satz depth.
+                            resolution_note = (
+                                f"Nr. {nr_num} not found in "
+                                f"{pref} {para_ref.paragraph} Abs. {abs_num} Satz {satz_num} - "
+                                f"resolved to Satz {satz_num}"
+                            )
+                        elif abs_num is not None:
+                            resolution_note = (
+                                f"Nr. {nr_num} not found in "
+                                f"{pref} {para_ref.paragraph} Abs. {abs_num} - "
+                                f"resolved to Abs. {abs_num}"
+                            )
+                        else:
+                            resolution_note = (
+                                f"Nr. {nr_num} not found in "
+                                f"{pref} {para_ref.paragraph} - "
+                                f"resolved to {pref} {para_ref.paragraph}"
+                            )
 
             # unterbuchstabe resolution
             if (
@@ -710,9 +1119,15 @@ class LawLibrary:
                 and buchst_num is not None
                 and unterbuchst_num is not None
                 and resolved_depth != "unterbuchstabe"
+                and not satz_context_blocks_subrefs
             ):
                 u_text = law_data.get_unterbuchstabe(
-                    para_key, abs_num, nr_num, buchst_num, unterbuchst_num
+                    para_key,
+                    abs_num,
+                    nr_num,
+                    buchst_num,
+                    unterbuchst_num,
+                    nr_dict=nr_dict_for_sub,
                 )
                 if u_text is not None:
                     unterbuchst_text_val = u_text

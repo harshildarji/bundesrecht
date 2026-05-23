@@ -1,11 +1,43 @@
 import pytest
 
 from bundesrecht import Bundesrecht, LawData, QueryResult, normalise, parse_reference
+from bundesrecht.lookup import LawLibrary
 
 
 @pytest.fixture(scope="session")
 def lib(request):
     return Bundesrecht(request.config.getoption("--jsonl"))
+
+
+def test_law_library_jurabk_takes_precedence_over_later_amtabk_alias(tmp_path):
+    jsonl = tmp_path / "laws.jsonl"
+    jsonl.write_text(
+        "\n".join(
+            [
+                '{"gesetze_id":"TAV::BJNR217700008","jurabk":"TAV","metadaten":{},"sections":[]}',
+                '{"gesetze_id":"TAmbV::BJNR181600022","jurabk":"TAmbV","metadaten":{"amtabk":"TAV"},"sections":[]}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    lib = LawLibrary(jsonl)
+
+    assert lib.get_law("TAV").gesetze_id == "TAV::BJNR217700008"
+    assert lib.get_law("TAmbV").gesetze_id == "TAmbV::BJNR181600022"
+
+
+def test_law_library_keeps_amtabk_alias_when_no_primary_collision(tmp_path):
+    jsonl = tmp_path / "laws.jsonl"
+    jsonl.write_text(
+        '{"gesetze_id":"TAmbV::BJNR181600022","jurabk":"TAmbV","metadaten":{"amtabk":"TAV"},"sections":[]}\n',
+        encoding="utf-8",
+    )
+
+    lib = LawLibrary(jsonl)
+
+    assert lib.get_law("TAV").gesetze_id == "TAmbV::BJNR181600022"
 
 
 # normalise
@@ -892,7 +924,7 @@ def test_normkette_gapped_nummern_uses_match_not_position():
     chain = result.normkette()
     assert (
         "second nummer" in chain
-    ), f"Expected Nr. 2 lead 'second nummer' in chain; got: {chain!r}"
+    ), f"Expected Nr. 2 lead 'second nummer' in chain, got: {chain!r}"
     assert (
         "first-a" not in chain
     ), f"Got Nr. 1a (positional index 1) instead of Nr. 2: {chain!r}"
@@ -918,7 +950,7 @@ def test_normkette_sequential_nummern_unaffected():
     chain = result.normkette()
     assert (
         "second nummer" in chain
-    ), f"Expected Nr. 2 lead 'second nummer' in chain; got: {chain!r}"
+    ), f"Expected Nr. 2 lead 'second nummer' in chain, got: {chain!r}"
 
 
 # normkette() must not crash when Nr. exceeds the nummern list length
@@ -940,3 +972,488 @@ def test_normkette_nr_beyond_list_returns_no_lead():
     chain = result.normkette()
     assert "buchstabe a" in chain
     assert "only nummer" not in chain
+
+
+# listenende schema validation
+def test_listenende_string_schema_raises():
+    """Old string listenende must fail clearly, not silently produce wrong output."""
+    import pytest
+
+    from bundesrecht.lookup import _assemble_absatz
+
+    with pytest.raises(ValueError, match="old schema"):
+        _assemble_absatz({"absatz": "lead", "nummer": [], "listenende": "stale string"})
+
+
+# Synthetic HWG § 11 Abs. 1 fixture
+# Mirrors the extractor output after the multi-DL refactor.
+# Nr 0-14 = first DL group (Satz 1), Nr 15-16 = second DL group (Satz 3).
+_HWG_11_ABS1 = {
+    "absatz": "(1) Ausserhalb der Fachkreise darf fuer Arzneimittel nicht geworben werden",
+    "nummer": [
+        {"text": "1. (weggefallen)", "buchstaben": []},
+        {"text": "2. zweites Item", "buchstaben": []},
+        {"text": "3. drittes Item", "buchstaben": []},
+        {"text": "4. viertes Item", "buchstaben": []},
+        {"text": "5. fuenftes Item", "buchstaben": []},
+        {"text": "6. sechstes Item", "buchstaben": []},
+        {"text": "7. siebtes Item", "buchstaben": []},
+        {"text": "8. achtes Item", "buchstaben": []},
+        {"text": "9. neuntes Item", "buchstaben": []},
+        {"text": "10. zehntes Item", "buchstaben": []},
+        {"text": "11. elftes Item", "buchstaben": []},
+        {"text": "12. zwoelftes Item", "buchstaben": []},
+        {"text": "13. dreizehntes Item", "buchstaben": []},
+        {"text": "14. vierzehntes Item", "buchstaben": []},
+        {"text": "15. fuenfzehntes Item", "buchstaben": []},
+        # second DL group (Satz 3), restarted labels 1 and 2
+        {"text": "1. mit der Wirkung einer solchen Behandlung", "buchstaben": []},
+        {"text": "2. Kinder und Jugendliche", "buchstaben": []},
+    ],
+    "listenende": [
+        {
+            "level": "absatz",
+            "start": 14,
+            "end": 15,
+            "text": (
+                "Fuer Medizinprodukte gilt Satz 1 entsprechend. "
+                "Ferner darf fuer die genannten plastisch-chirurgischen Eingriffe "
+                "nicht wie folgt geworben werden:"
+            ),
+        }
+    ],
+}
+
+_HWG_11_LAW = LawData(
+    {
+        "jurabk": "HWG",
+        "sections": [
+            {
+                "paragraf": "§ 11",
+                "titel": "",
+                "content": [_HWG_11_ABS1],
+                "fussnoten": [],
+                "gliederung": [],
+            }
+        ],
+    }
+)
+
+# Queryable wrapper around the synthetic LawData - constructs without file I/O
+from bundesrecht.lookup import LawLibrary as _LawLibrary
+
+_inner_lib = _LawLibrary.__new__(_LawLibrary)
+_inner_lib._laws = {"HWG": _HWG_11_LAW}
+_HWG_LIB = Bundesrecht.__new__(Bundesrecht)
+_HWG_LIB._library = _inner_lib
+
+
+# _preprocess_satz_context unit tests
+def test_preprocess_satz_context_returns_three_satz_entries():
+    from bundesrecht.lookup import _preprocess_satz_context
+
+    contexts = _preprocess_satz_context(_HWG_11_ABS1)
+    assert len(contexts) == 3
+
+
+def test_preprocess_satz_context_satz1_governs_first_group():
+    from bundesrecht.lookup import _preprocess_satz_context
+
+    ctx = _preprocess_satz_context(_HWG_11_ABS1)
+    s1 = next(c for c in ctx if c["satz_num"] == 1)
+    assert s1["nr_start"] == 0
+    assert s1["nr_end"] == 15
+
+
+def test_preprocess_satz_context_satz2_standalone():
+    from bundesrecht.lookup import _preprocess_satz_context
+
+    ctx = _preprocess_satz_context(_HWG_11_ABS1)
+    s2 = next(c for c in ctx if c["satz_num"] == 2)
+    assert s2["nr_start"] is None
+    assert s2["nr_end"] is None
+    assert "Medizinprodukte" in s2["text"]
+
+
+def test_preprocess_satz_context_satz3_governs_second_group():
+    from bundesrecht.lookup import _preprocess_satz_context
+
+    ctx = _preprocess_satz_context(_HWG_11_ABS1)
+    s3 = next(c for c in ctx if c["satz_num"] == 3)
+    assert s3["nr_start"] == 15
+    assert s3["nr_end"] is None
+    assert "plastisch-chirurgischen" in s3["text"]
+
+
+def test_preprocess_satz_context_simple_paragraph_returns_empty():
+    from bundesrecht.lookup import _preprocess_satz_context
+
+    simple = {
+        "absatz": "(1) Einfacher Absatz",
+        "nummer": [{"text": "1. Item", "buchstaben": []}],
+        "listenende": [
+            {"level": "absatz", "start": 0, "end": None, "text": "Nachsatz"}
+        ],
+    }
+    assert _preprocess_satz_context(simple) == []
+
+
+# get_satz with multi-DL context
+def test_get_satz_satz2_returns_medizinprodukte_sentence():
+    satz2 = _HWG_11_LAW.get_satz("11", 1, 2)
+    assert satz2 is not None
+    assert "Medizinprodukte" in satz2
+    assert "plastisch" not in satz2
+
+
+def test_get_satz_satz3_returns_plastisch_intro():
+    satz3 = _HWG_11_LAW.get_satz("11", 1, 3)
+    assert satz3 is not None
+    assert "plastisch-chirurgischen" in satz3
+
+
+# Satz-constrained Nummer resolution
+def test_satz3_nr1_resolves_to_second_group():
+    r = _HWG_LIB.query("§ 11 Abs. 1 Satz 3 Nr. 1 HWG")
+    assert len(r) == 1
+    assert r[0].resolved_depth == "nummer"
+    assert "mit der Wirkung" in r[0].full_text()
+
+
+def test_satz3_nr2_resolves_to_kinder():
+    r = _HWG_LIB.query("§ 11 Abs. 1 Satz 3 Nr. 2 HWG")
+    assert len(r) == 1
+    assert r[0].resolved_depth == "nummer"
+    assert "Kinder und Jugendliche" in r[0].full_text()
+
+
+def test_nr1_without_satz_resolves_to_first_group():
+    r = _HWG_LIB.query("§ 11 Abs. 1 Nr. 1 HWG")
+    assert len(r) == 1
+    assert r[0].resolved_depth == "nummer"
+    assert r[0].full_text() == "(weggefallen)"
+
+
+# full_text branches by resolved_depth
+def test_full_text_satz_plus_nr_returns_nummer_text_not_satz_text():
+    """When resolved_depth is 'nummer', full_text must not return the Satz intro."""
+    r = _HWG_LIB.query("§ 11 Abs. 1 Satz 3 Nr. 1 HWG")
+    assert r[0].resolved_depth == "nummer"
+    text = r[0].full_text()
+    assert (
+        "plastisch" not in text
+    ), "full_text should return Nummer text, not Satz intro"
+    assert "mit der Wirkung" in text
+
+
+# normkette uses satz context so restarted Nr. 1 resolves to correct lead
+def test_normkette_satz3_nr1_picks_second_group_lead():
+    r = _HWG_LIB.query("§ 11 Abs. 1 Satz 3 Nr. 1 HWG")
+    chain = r[0].normkette()
+    assert "mit der Wirkung" in chain
+    assert "(weggefallen)" not in chain
+
+
+def test_normkette_satz3_nr2_includes_bridge_satz():
+    r = _HWG_LIB.query("§ 11 Abs. 1 Satz 3 Nr. 2 HWG")
+    chain = r[0].normkette()
+    assert "plastisch-chirurgischen" in chain
+    assert "Kinder und Jugendliche" in chain
+    assert chain.index("plastisch-chirurgischen") < chain.index(
+        "Kinder und Jugendliche"
+    )
+
+
+# Restarted labels synthetic test: 15 items followed by 1., 2.
+def test_restarted_labels_satz_context_by_index_not_label():
+    """Satz context must use index ranges, not label text, to resolve Nr. 1.
+
+    With nummern [1., 2., ..., 15., 1., 2.] and satz3 governing indices 15-16,
+    Satz 3 Nr. 1 must return the second "1." (index 15), not the first (index 0).
+    """
+    nummern = [{"text": f"{i}. Item {i}", "buchstaben": []} for i in range(1, 16)]
+    nummern += [
+        {"text": "1. Satz3 first item", "buchstaben": []},
+        {"text": "2. Satz3 second item", "buchstaben": []},
+    ]
+    absatz_data = {
+        "absatz": "(1) Lead text",
+        "nummer": nummern,
+        "listenende": [
+            {"level": "absatz", "start": 14, "end": 15, "text": "Bridge. Intro:"}
+        ],
+    }
+    law_data = LawData(
+        {
+            "jurabk": "TestSatz",
+            "sections": [
+                {
+                    "paragraf": "§ 1",
+                    "titel": "",
+                    "content": [absatz_data],
+                    "fussnoten": [],
+                    "gliederung": [],
+                }
+            ],
+        }
+    )
+    inner = _LawLibrary.__new__(_LawLibrary)
+    inner._laws = {"TESTSATZ": law_data}
+    lib_ts = Bundesrecht.__new__(Bundesrecht)
+    lib_ts._library = inner
+
+    r_with_satz = lib_ts.query("§ 1 Abs. 1 Satz 3 Nr. 1 TestSatz")
+    assert r_with_satz[0].full_text() == "Satz3 first item"
+
+    r_without_satz = lib_ts.query("§ 1 Abs. 1 Nr. 1 TestSatz")
+    assert r_without_satz[0].full_text() == "Item 1"
+
+
+# _assemble_absatz positional insertion for multi-DL paragraph
+def test_assemble_absatz_interleaved_listenende_in_correct_position():
+    from bundesrecht.lookup import _assemble_absatz
+
+    text = _assemble_absatz(_HWG_11_ABS1)
+    pos_14 = text.find("fuenfzehntes Item")
+    pos_bridge = text.find("Medizinprodukte")
+    pos_16 = text.find("mit der Wirkung")
+    assert (
+        pos_14 < pos_bridge < pos_16
+    ), "Bridge text must appear between the two DL groups in assembled text"
+
+
+# Satz blocking rules - standalone and missing Satz must not allow Nr resolution
+def test_satz2_nr1_blocked_standalone_satz():
+    """Satz 2 is standalone (no DL group). Nr. 1 must not resolve from any DL group."""
+    r = _HWG_LIB.query("§ 11 Abs. 1 Satz 2 Nr. 1 HWG")
+    assert r[0].resolved_depth == "satz"
+    assert "Medizinprodukte" in r[0].full_text()
+
+
+def test_missing_satz_nr_blocked_in_multi_dl():
+    """Satz 99 does not exist. Nr. 1 must not resolve unconstrained."""
+    r = _HWG_LIB.query("§ 11 Abs. 1 Satz 99 Nr. 1 HWG")
+    assert r[0].resolved_depth != "nummer"
+    assert r[0].nummer_text is None
+
+
+def test_satz3_nr99_falls_back_to_satz_with_correct_note():
+    """Nr. 99 is not in Satz 3's list. resolved_depth stays satz, note references Satz 3."""
+    r = _HWG_LIB.query("§ 11 Abs. 1 Satz 3 Nr. 99 HWG")
+    assert r[0].resolved_depth == "satz"
+    assert "Satz 3" in r[0].resolution_note
+    assert "resolved to Satz 3" in r[0].resolution_note
+
+
+# Satz-constrained Buchstabe lookup - must resolve from correct DL group
+_HWG_11_ABS1_WITH_BUCHST = {
+    "absatz": "(1) Lead text",
+    "nummer": [
+        # First DL group (Satz 1): Nr. 1 has buchstabe a) from first group
+        {
+            "text": "1. first group nr1",
+            "buchstaben": [
+                {"text": "a) first-a from first group"},
+            ],
+        },
+        *({"text": f"{i}. item {i}", "buchstaben": []} for i in range(2, 16)),
+        # Second DL group (Satz 3): Nr. 1 has buchstabe a) from second group
+        {
+            "text": "1. second group nr1",
+            "buchstaben": [
+                {"text": "a) first-a from second group"},
+            ],
+        },
+        {"text": "2. second group nr2", "buchstaben": []},
+    ],
+    "listenende": [
+        {"level": "absatz", "start": 14, "end": 15, "text": "Bridge. Intro:"}
+    ],
+}
+
+_hwg_buchst_law = LawData(
+    {
+        "jurabk": "HWGBuchst",
+        "sections": [
+            {
+                "paragraf": "§ 11",
+                "titel": "",
+                "content": [_HWG_11_ABS1_WITH_BUCHST],
+                "fussnoten": [],
+                "gliederung": [],
+            }
+        ],
+    }
+)
+_hwg_buchst_inner = _LawLibrary.__new__(_LawLibrary)
+_hwg_buchst_inner._laws = {"HWGBUCHST": _hwg_buchst_law}
+_hwg_buchst_lib = Bundesrecht.__new__(Bundesrecht)
+_hwg_buchst_lib._library = _hwg_buchst_inner
+
+
+def test_satz3_nr1_buchst_a_resolves_from_correct_dl_group():
+    """Satz 3 Nr. 1 Buchst. a must resolve from the second DL group, not the first."""
+    r = _hwg_buchst_lib.query("§ 11 Abs. 1 Satz 3 Nr. 1 Buchst. a HWGBuchst")
+    assert r[0].resolved_depth == "buchstabe"
+    assert "second group" in r[0].full_text()
+    assert "first group" not in r[0].full_text()
+
+
+# _validate_listenende - structural validation
+def test_validate_listenende_accepts_empty_list():
+    from bundesrecht.lookup import _validate_listenende
+
+    assert _validate_listenende([]) == []
+    assert _validate_listenende(None) == []
+
+
+def test_validate_listenende_rejects_string():
+    import pytest
+
+    from bundesrecht.lookup import _validate_listenende
+
+    with pytest.raises(ValueError, match="old schema"):
+        _validate_listenende("stale string")
+
+
+def test_validate_listenende_rejects_list_of_strings():
+    import pytest
+
+    from bundesrecht.lookup import _validate_listenende
+
+    with pytest.raises(TypeError, match="must be a dict"):
+        _validate_listenende(["not a dict"])
+
+
+def test_validate_listenende_rejects_missing_required_key():
+    import pytest
+
+    from bundesrecht.lookup import _validate_listenende
+
+    # Missing start and end keys (now required)
+    with pytest.raises(KeyError, match="start"):
+        _validate_listenende([{"level": "absatz", "text": "ok"}])
+
+
+def test_validate_listenende_rejects_invalid_level():
+    import pytest
+
+    from bundesrecht.lookup import _validate_listenende
+
+    with pytest.raises(ValueError, match="level"):
+        _validate_listenende(
+            [{"level": "invalid", "start": 0, "end": None, "text": "ok"}]
+        )
+
+
+def test_validate_listenende_rejects_non_string_text():
+    import pytest
+
+    from bundesrecht.lookup import _validate_listenende
+
+    with pytest.raises(TypeError, match="text.*str"):
+        _validate_listenende(
+            [{"level": "absatz", "start": 0, "end": None, "text": 123}]
+        )
+
+
+def test_validate_listenende_rejects_bad_start_type():
+    import pytest
+
+    from bundesrecht.lookup import _validate_listenende
+
+    with pytest.raises(TypeError, match="start.*int"):
+        _validate_listenende(
+            [{"level": "absatz", "text": "ok", "start": "14", "end": 15}]
+        )
+
+
+def test_validate_listenende_accepts_valid_entry():
+    from bundesrecht.lookup import _validate_listenende
+
+    entries = [{"level": "absatz", "start": 14, "end": 15, "text": "Bridge"}]
+    result = _validate_listenende(entries)
+    assert result == entries
+
+
+# Unterbuchstabe lookup must also be Satz-constrained
+_HWG_11_WITH_UBUCH = {
+    "absatz": "(1) Lead text",
+    "nummer": [
+        # First DL group: Nr. 1 has Buchst. a with aa) unterbuchstabe
+        {
+            "text": "1. first group nr1",
+            "buchstaben": [
+                {
+                    "text": "a) first group buchst-a",
+                    "unterbuchstaben": [
+                        {"text": "aa) first group aa"},
+                    ],
+                },
+            ],
+        },
+        *({"text": f"{i}. item {i}", "buchstaben": []} for i in range(2, 16)),
+        # Second DL group: Nr. 1 also has Buchst. a with aa) (different text)
+        {
+            "text": "1. second group nr1",
+            "buchstaben": [
+                {
+                    "text": "a) second group buchst-a",
+                    "unterbuchstaben": [
+                        {"text": "aa) second group aa"},
+                    ],
+                },
+            ],
+        },
+        {"text": "2. second group nr2", "buchstaben": []},
+    ],
+    "listenende": [
+        {"level": "absatz", "start": 14, "end": 15, "text": "Bridge. Intro:"}
+    ],
+}
+
+_hwg_ubuch_law = LawData(
+    {
+        "jurabk": "HWGUbuch",
+        "sections": [
+            {
+                "paragraf": "§ 11",
+                "titel": "",
+                "content": [_HWG_11_WITH_UBUCH],
+                "fussnoten": [],
+                "gliederung": [],
+            }
+        ],
+    }
+)
+_hwg_ubuch_inner = _LawLibrary.__new__(_LawLibrary)
+_hwg_ubuch_inner._laws = {"HWGUBUCH": _hwg_ubuch_law}
+_hwg_ubuch_lib = Bundesrecht.__new__(Bundesrecht)
+_hwg_ubuch_lib._library = _hwg_ubuch_inner
+
+
+def test_satz3_nr1_buchst_a_ubuch_aa_resolves_from_correct_group():
+    """Satz 3 Nr. 1 Buchst. a Buchst. aa must resolve from the second DL group."""
+    r = _hwg_ubuch_lib.query("§ 11 Abs. 1 Satz 3 Nr. 1 Buchst. a Buchst. aa HWGUbuch")
+    assert r[0].resolved_depth == "unterbuchstabe"
+    assert "second group aa" in r[0].full_text()
+    assert "first group" not in r[0].full_text()
+
+
+def test_satz2_nr1_buchst_a_ubuch_aa_blocked_standalone_satz():
+    """Standalone Satz must not resolve nested Nummer references unconstrained."""
+    r = _hwg_ubuch_lib.query("§ 11 Abs. 1 Satz 2 Nr. 1 Buchst. a Buchst. aa HWGUbuch")
+    assert r[0].resolved_depth == "satz"
+    assert r[0].nummer_text is None
+    assert r[0].unterbuchst_text is None
+    assert "standalone" in r[0].resolution_note
+    assert "first group" not in r[0].full_text()
+
+
+def test_missing_satz_nr1_buchst_a_ubuch_aa_blocked_in_multi_dl():
+    """Missing Satz must not fall through to unconstrained Unterbuchstabe lookup."""
+    r = _hwg_ubuch_lib.query("§ 11 Abs. 1 Satz 99 Nr. 1 Buchst. a Buchst. aa HWGUbuch")
+    assert r[0].resolved_depth == "absatz"
+    assert r[0].nummer_text is None
+    assert r[0].unterbuchst_text is None
+    assert "Satz 99 not found" in r[0].resolution_note
