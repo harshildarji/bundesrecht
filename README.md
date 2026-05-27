@@ -13,6 +13,7 @@ Zero dependencies. Pure Python 3.10+.
 - [Normalising references](#normalising-references)
 - [What the normaliser handles](#what-the-normaliser-handles)
 - [Resolving references](#resolving-references)
+- [Corpus cache](#corpus-cache)
 - [QueryResult](#queryresult)
 - [LawData](#lawdata)
 - [Resolved depth reference](#resolved-depth-reference)
@@ -23,10 +24,10 @@ Zero dependencies. Pure Python 3.10+.
 
 The library is built in three layers. The **parser** is the foundational *brick*, identifying the structure of any German citation string. The **normaliser** builds on the parser to handle expansion and produce canonical strings. The **resolver** builds on both to look up actual statutory text from the corpus.
 
-All three layers are exposed as public APIs. Use `parse()` when you only need structured extraction. Use `normalise()` when you need canonical strings without corpus lookup. Use `query()` when you need the actual statutory text.
+All three layers are exposed as public APIs. Use `parse_reference()` when you only need structured extraction. Use `normalise()` when you need canonical strings without corpus lookup. Use `query()` when you need the actual statutory text.
 
 <p align="center">
-  <img src="examples/architecture.png" alt="Simplified architecture of the bundesrecht library" width="350">
+  <img src="https://raw.githubusercontent.com/harshildarji/bundesrecht/main/examples/architecture.png" alt="Simplified architecture of the bundesrecht library" width="350">
 </p>
 
 
@@ -186,7 +187,17 @@ Load once, query as many times as you like.
 ```python
 from bundesrecht import Bundesrecht
 
-lib = Bundesrecht('data/gesetze.jsonl')
+lib = Bundesrecht()
+```
+
+By default, `Bundesrecht()` uses the corpus version pinned to the installed
+package. It loads the compatible cached corpus if present, or downloads the
+matching public `gesetze.jsonl` from Hugging Face on first use.
+
+For offline or reproducible work with an explicit corpus file:
+
+```python
+lib = Bundesrecht(local_path='data/gesetze.jsonl')
 ```
 
 ### lib.query(raw)
@@ -282,6 +293,37 @@ Number of distinct laws loaded.
 ```python
 lib.law_count   # → 6873
 ```
+
+
+## Corpus cache
+
+The PyPI package ships code only. It does not bundle the full corpus and does
+not download data during installation.
+
+On first `Bundesrecht()` use, the package checks a commit-keyed cache:
+
+```text
+~/.cache/bundesrecht/<pinned-data-commit>/gesetze.jsonl
+```
+
+If the compatible file is missing, it downloads the exact Hugging Face dataset
+commit pinned by this package version and validates the JSONL structure before
+loading it. Later calls reuse the cached file.
+
+To choose a different cache root, set:
+
+```bash
+export BUNDESRECHT_CACHE_DIR=/path/to/cache
+```
+
+To avoid network access entirely, pass a local file:
+
+```python
+lib = Bundesrecht(local_path='data/gesetze.jsonl')
+```
+
+Local files are validated before loading. If a local file does not match the
+expected corpus shape, use `Bundesrecht()` to load the package-managed corpus.
 
 
 ## QueryResult
@@ -427,9 +469,9 @@ abs1 = bgb.get_absatz('433', '1')   # string also works
 | `resolved_depth`   | Meaning                                                |
 | ------------------ | ------------------------------------------------------ |
 | `'section'`        | Only the paragraph was found (no sub-ref match)        |
-| `'absatz'`         | Absatz resolved; Nummer was not requested/found        |
-| `'nummer'`         | Nummer resolved; Buchstabe not requested/found         |
-| `'buchstabe'`      | Buchstabe resolved; Unterbuchstabe not requested/found |
+| `'absatz'`         | Absatz resolved, Nummer was not requested/found        |
+| `'nummer'`         | Nummer resolved, Buchstabe not requested/found         |
+| `'buchstabe'`      | Buchstabe resolved, Unterbuchstabe not requested/found |
 | `'unterbuchstabe'` | Fully resolved to Unterbuchstabe level (`aa)`, `bb)`)  |
 
 
@@ -439,7 +481,7 @@ abs1 = bgb.get_absatz('433', '1')   # string also works
 from bundesrecht import Bundesrecht, normalise, parse_reference
 
 # Load
-lib = Bundesrecht('data/gesetze.jsonl')
+lib = Bundesrecht()
 print(lib)   # → Bundesrecht(6873 laws loaded)
 
 # Parse only

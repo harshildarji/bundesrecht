@@ -8,15 +8,14 @@ packages = ["bundesrecht"]
 [project]
 name = "bundesrecht"
 version = "0.1.0"
-description = "Structured parsing and resolution of German federal law references"
+description = "Structured parsing, normalisation, and resolution of German federal law references"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 keywords = ["german law", "bundesrecht", "legal nlp", "normreferenz", "gesetze"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -24,14 +23,14 @@ classifiers = [
     "Topic :: Text Processing :: Linguistic",
 ]
 
-# The package itself has zero dependencies — pure Python stdlib only.
+# The package itself has zero dependencies - pure Python stdlib only.
 # If you are building an application on top of bundesrecht (e.g. a Streamlit
 # app), manage those dependencies separately in your app's own requirements.txt
-# or pyproject.toml — they are not part of this package.
+# or pyproject.toml - they are not part of this package.
 dependencies = []
 
 [project.optional-dependencies]
-# Only testing tools — nothing application-specific
+# Only testing tools - nothing application-specific
 dev = ["pytest>=7"]
 
 [project.urls]

@@ -21,23 +21,17 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pytest huggingface_hub
+        run: pip install pytest
 
       - name: Download gesetze.jsonl
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          python -c "
-          from huggingface_hub import hf_hub_download
-          import os
-          hf_hub_download(
-              repo_id='harshildarji/bundesrecht',
-              filename='gesetze.jsonl',
-              repo_type='dataset',
-              token=os.environ['HF_TOKEN'],
-              local_dir='.',
-          )
-          "
+          python - <<'PY'
+          import urllib.request
+
+          from bundesrecht._corpus import get_data_url
+
+          urllib.request.urlretrieve(get_data_url(), "gesetze.jsonl")
+          PY
 
       - name: Run tests
         run: pytest test_bundesrecht.py -v --jsonl gesetze.jsonl

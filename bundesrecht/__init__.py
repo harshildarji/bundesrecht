@@ -1,5 +1,5 @@
 """
-bundesrecht - structured resolution of German federal law references.
+bundesrecht - structured parsing, normalisation, and resolution of German federal law references.
 
     from bundesrecht import Bundesrecht
 
@@ -25,6 +25,7 @@ Public API:
 from pathlib import Path
 from typing import Optional, Union
 
+from bundesrecht._corpus import resolve_corpus_path
 from bundesrecht.lookup import LawData, LawLibrary, QueryResult
 from bundesrecht.normaliser import normalise
 from bundesrecht.references import (
@@ -38,12 +39,15 @@ from bundesrecht.references import (
 class Bundesrecht:
     """Main entry point for bundesrecht.
 
-    Loads a JSONL dataset once and exposes query methods.
+    Loads a compatible JSONL corpus once and exposes query methods.
 
     Args:
-        jsonl_path: Path to gesetze.jsonl (one JSON object per line).
+        local_path: Optional path to gesetze.jsonl. If omitted, bundesrecht
+            uses the package-managed corpus pinned to this package version,
+            downloading it into a local cache if necessary.
 
     Examples:
+        >>> lib = Bundesrecht()
         >>> lib = Bundesrecht("data/gesetze.jsonl")
         >>> results = lib.query("§ 2 Abs. 1 Nr. 1, Nr. 7, Abs. 2 UrhG")
         >>> results = lib.query_canonical("§ 2 Abs. 1 Nr. 1 UrhG")
@@ -53,7 +57,18 @@ class Bundesrecht:
         ['§ 312 BGB', '§ 313 BGB', '§ 314 BGB']
     """
 
-    def __init__(self, jsonl_path: Union[str, Path]):
+    def __init__(
+        self,
+        local_path: Optional[Union[str, Path]] = None,
+        *,
+        jsonl_path: Optional[Union[str, Path]] = None,
+    ):
+        if local_path is not None and jsonl_path is not None:
+            raise TypeError("Pass either local_path or jsonl_path, not both")
+        # Keep jsonl_path as a compatibility alias for the old constructor API.
+        if jsonl_path is not None:
+            local_path = jsonl_path
+        jsonl_path = resolve_corpus_path(local_path)
         self._library = LawLibrary(str(jsonl_path))
 
     # normalisation (no lookup)

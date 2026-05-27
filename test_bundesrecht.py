@@ -4,6 +4,16 @@ from bundesrecht import Bundesrecht, LawData, QueryResult, normalise, parse_refe
 from bundesrecht.lookup import LawLibrary
 
 
+def _minimal_corpus_text():
+    return (
+        '{"gesetze_id":"TestG::BJNR000000001","jurabk":"TestG",'
+        '"metadaten":{},"sections":[{"paragraf":"§ 1","titel":"Test",'
+        '"content":[{"absatz":"Test text","nummer":[],"listenende":[]}],'
+        '"fussnoten":[],"gliederung":[]}]}'
+        "\n"
+    )
+
+
 @pytest.fixture(scope="session")
 def lib(request):
     return Bundesrecht(request.config.getoption("--jsonl"))
@@ -38,6 +48,110 @@ def test_law_library_keeps_amtabk_alias_when_no_primary_collision(tmp_path):
     lib = LawLibrary(jsonl)
 
     assert lib.get_law("TAV").gesetze_id == "TAmbV::BJNR181600022"
+
+
+def test_bundesrecht_default_downloads_package_managed_corpus(tmp_path, monkeypatch):
+    import bundesrecht._corpus as corpus
+
+    source = tmp_path / "source.jsonl"
+    source.write_text(_minimal_corpus_text(), encoding="utf-8")
+    cache_root = tmp_path / "cache"
+    data_commit = "a" * 40
+
+    monkeypatch.setenv("BUNDESRECHT_CACHE_DIR", str(cache_root))
+    monkeypatch.setattr(corpus, "DEFAULT_DATA_COMMIT", data_commit)
+    monkeypatch.setattr(corpus, "get_data_url", lambda: source.as_uri())
+
+    lib = Bundesrecht()
+
+    cached = cache_root / data_commit / "gesetze.jsonl"
+    assert cached.exists()
+    assert lib.law_count == 1
+    assert lib.get_law("TestG").get_section("1")["titel"] == "Test"
+
+
+def test_bundesrecht_default_reuses_existing_cache(tmp_path, monkeypatch):
+    import bundesrecht._corpus as corpus
+
+    cache_root = tmp_path / "cache"
+    data_commit = "b" * 40
+    cached = cache_root / data_commit / "gesetze.jsonl"
+    cached.parent.mkdir(parents=True)
+    cached.write_text(_minimal_corpus_text(), encoding="utf-8")
+
+    def fail_download():
+        raise AssertionError("download should not run when cache is valid")
+
+    monkeypatch.setenv("BUNDESRECHT_CACHE_DIR", str(cache_root))
+    monkeypatch.setattr(corpus, "DEFAULT_DATA_COMMIT", data_commit)
+    monkeypatch.setattr(corpus, "download_default_corpus", fail_download)
+
+    lib = Bundesrecht()
+
+    assert lib.law_count == 1
+
+
+def test_bundesrecht_default_download_failure_raises_clear_error(tmp_path, monkeypatch):
+    import bundesrecht._corpus as corpus
+
+    cache_root = tmp_path / "cache"
+
+    monkeypatch.setenv("BUNDESRECHT_CACHE_DIR", str(cache_root))
+    monkeypatch.setattr(corpus, "DEFAULT_DATA_COMMIT", "c" * 40)
+    monkeypatch.setattr(corpus, "get_data_url", lambda: "file:///missing/gesetze.jsonl")
+
+    with pytest.raises(corpus.CorpusDownloadError, match="Could not download"):
+        Bundesrecht()
+
+    cached_files = list(cache_root.rglob("*"))
+    assert cached_files == [cache_root / ("c" * 40)]
+
+
+def test_bundesrecht_local_path_missing_raises(tmp_path):
+    missing = tmp_path / "missing.jsonl"
+
+    with pytest.raises(FileNotFoundError, match="Bundesrecht corpus file not found"):
+        Bundesrecht(missing)
+
+
+def test_bundesrecht_local_path_incompatible_raises(tmp_path):
+    jsonl = tmp_path / "bad.jsonl"
+    jsonl.write_text('{"jurabk":"BadG"}\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="package-managed corpus"):
+        Bundesrecht(jsonl)
+
+
+def test_bundesrecht_local_path_old_listenende_schema_raises(tmp_path):
+    jsonl = tmp_path / "old.jsonl"
+    jsonl.write_text(
+        '{"gesetze_id":"OldG::BJNR000000001","jurabk":"OldG",'
+        '"metadaten":{},"sections":[{"paragraf":"§ 1","titel":"",'
+        '"content":[{"absatz":"text","nummer":[],"listenende":"old"}],'
+        '"fussnoten":[],"gliederung":[]}]}'
+        "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="package-managed corpus"):
+        Bundesrecht(local_path=jsonl)
+
+
+def test_bundesrecht_jsonl_path_keyword_still_works(tmp_path):
+    jsonl = tmp_path / "laws.jsonl"
+    jsonl.write_text(_minimal_corpus_text(), encoding="utf-8")
+
+    lib = Bundesrecht(jsonl_path=jsonl)
+
+    assert lib.law_count == 1
+
+
+def test_bundesrecht_rejects_two_path_arguments(tmp_path):
+    jsonl = tmp_path / "laws.jsonl"
+    jsonl.write_text(_minimal_corpus_text(), encoding="utf-8")
+
+    with pytest.raises(TypeError, match="either local_path or jsonl_path"):
+        Bundesrecht(local_path=jsonl, jsonl_path=jsonl)
 
 
 # normalise
