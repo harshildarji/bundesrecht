@@ -6,8 +6,9 @@ Zero dependencies. Pure Python 3.10+.
 
 ## Contents
 <!-- no toc -->
-- [Simplified architecture](#simplified-architecture)
 - [Installation](#installation)
+- [Quick start](#quick-start)
+- [Simplified architecture](#simplified-architecture)
 - [Parsing references](#parsing-references)
 - [Data model](#data-model)
 - [Normalising references](#normalising-references)
@@ -20,6 +21,36 @@ Zero dependencies. Pure Python 3.10+.
 - [Complete example](#complete-example)
 
 
+## Installation
+
+```bash
+pip install bundesrecht
+```
+
+
+## Quick start
+
+> [!NOTE]
+> The library is split into two parts.
+> 1. `parse_reference()` and `normalise()` work completely offline with zero dependency on any dataset.
+> 2. To use the resolver, create a `Bundesrecht` instance. This corpus-backed entry point needs the structured corpus, which is downloaded automatically on first use.
+> You do not need the dataset if you only want to parse or normalise references.
+
+```python
+from bundesrecht import parse_reference, normalise, Bundesrecht
+
+# No corpus needed.
+ref = parse_reference('§ 312 i.V.m. § 355 BGB')
+refs = normalise('§ 2 Abs. 1 Nr. 1, Nr. 7, Abs. 2 UrhG')
+
+# Only create Bundesrecht() when you need the resolver.
+lib = Bundesrecht()
+results = lib.query('§ 433 Abs. 1 BGB')
+```
+
+`Bundesrecht()` loads the corpus version pinned to the installed package. It downloads the corpus on first use, then reuses the local cache.
+
+
 ## Simplified architecture
 
 The library is built in three layers. The **parser** is the foundational *brick*, identifying the structure of any German citation string. The **normaliser** builds on the parser to handle expansion and produce canonical strings. The **resolver** builds on both to look up actual statutory text from the corpus.
@@ -29,13 +60,6 @@ All three layers are exposed as public APIs. Use `parse_reference()` when you on
 <p align="center">
   <img src="https://raw.githubusercontent.com/harshildarji/bundesrecht/main/examples/architecture.png" alt="Simplified architecture of the bundesrecht library" width="350">
 </p>
-
-
-## Installation
-
-```bash
-pip install bundesrecht
-```
 
 
 ## Parsing references
