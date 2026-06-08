@@ -7,7 +7,7 @@ packages = ["bundesrecht"]
 
 [project]
 name = "bundesrecht"
-version = "0.1.0"
+version = "0.1.1"
 description = "Structured parsing, normalisation, and resolution of German federal law references"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,3 +35,6 @@ dev = ["pytest>=7"]
 
 [project.urls]
 Homepage = "https://github.com/harshildarji/bundesrecht"
+Source = "https://github.com/harshildarji/bundesrecht"
+Paper = "https://arxiv.org/abs/2605.31338"
+Dataset = "https://huggingface.co/datasets/harshildarji/bundesrecht"

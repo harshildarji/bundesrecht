@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper."
+title: "Bundesrecht: An Open Library and Corpus for German Statutory Reference Processing"
+type: software
+authors:
+    - family-names: Darji
+      given-names: Harshil
+    - family-names: Heckelmann
+      given-names: Martin
+    - family-names: Kratsch
+      given-names: Christina
+    - family-names: de Melo
+      given-names: Gerard
+repository-code: "https://github.com/harshildarji/bundesrecht"
+url: "https://pypi.org/project/bundesrecht/"
+version: 0.1.1
+date-released: 2026-06-08
+preferred-citation:
+    type: article
+    doi: "10.48550/arXiv.2605.31338"
+    title: "Bundesrecht: An Open Library and Corpus for German Statutory Reference Processing"
+    authors:
+        - family-names: Darji
+          given-names: Harshil
+        - family-names: Heckelmann
+          given-names: Martin
+        - family-names: Kratsch
+          given-names: Christina
+        - family-names: de Melo
+          given-names: Gerard
+    journal: "arXiv preprint arXiv:2605.31338"
+    year: 2026
+    url: "https://arxiv.org/abs/2605.31338"
