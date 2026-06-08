@@ -19,6 +19,7 @@ Zero dependencies. Pure Python 3.10+.
 - [LawData](#lawdata)
 - [Resolved depth reference](#resolved-depth-reference)
 - [Complete example](#complete-example)
+- [Citation](#citation)
 
 
 ## Installation
@@ -536,4 +537,19 @@ len(bgb.sections)                        # → 2541
 # List all laws
 lib.available_laws[:5]    # → ['1-DM-GOLDMÜNZG', '1. BESVNG', ...]
 lib.law_count             # → 6873
+```
+
+
+## Citation
+
+Please consider citing our [paper](https://arxiv.org/abs/2605.31338) when using the dataset:
+
+```bibtex
+@article{darji2026bundesrecht,
+  title={Bundesrecht: An Open Library and Corpus for German Statutory Reference Processing},
+  author={Darji, Harshil and Heckelmann, Martin and Kratsch, Christina and de Melo, Gerard},
+  journal={arXiv preprint arXiv:2605.31338},
+  year={2026}
+}
+
 ```
