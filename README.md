@@ -22,6 +22,7 @@ Zero dependencies. Pure Python 3.10+.
 - [Citation](#citation)
 
 
+<a id="installation"></a>
 ## Installation
 
 ```bash
@@ -29,13 +30,21 @@ pip install bundesrecht
 ```
 
 
+<a id="quick-start"></a>
 ## Quick start
 
-> [!NOTE]
+> 
+> <p>
+>   <img src="https://raw.githubusercontent.com/harshildarji/bundesrecht/main/assets/note.svg" alt="Note" width="78">
+> </p>
+> 
 > The library is split into two parts.
+> 
 > 1. `parse_reference()` and `normalise()` work completely offline with zero dependency on any dataset.
 > 2. To use the resolver, create a `Bundesrecht` instance. This corpus-backed entry point needs the structured corpus, which is downloaded automatically on first use.
+> 
 > You do not need the dataset if you only want to parse or normalise references.
+>
 
 ```python
 from bundesrecht import parse_reference, normalise, Bundesrecht
@@ -52,6 +61,7 @@ results = lib.query('§ 433 Abs. 1 BGB')
 `Bundesrecht()` loads the corpus version pinned to the installed package. It downloads the corpus on first use, then reuses the local cache.
 
 
+<a id="simplified-architecture"></a>
 ## Simplified architecture
 
 The library is built in three layers. The **parser** is the foundational *brick*, identifying the structure of any German citation string. The **normaliser** builds on the parser to handle expansion and produce canonical strings. The **resolver** builds on both to look up actual statutory text from the corpus.
@@ -59,10 +69,11 @@ The library is built in three layers. The **parser** is the foundational *brick*
 All three layers are exposed as public APIs. Use `parse_reference()` when you only need structured extraction. Use `normalise()` when you need canonical strings without corpus lookup. Use `query()` when you need the actual statutory text.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/harshildarji/bundesrecht/main/examples/architecture.png" alt="Simplified architecture of the bundesrecht library" width="350">
+  <img src="https://raw.githubusercontent.com/harshildarji/bundesrecht/main/assets/architecture.png" alt="Simplified architecture of the bundesrecht library" width="350">
 </p>
 
 
+<a id="parsing-references"></a>
 ## Parsing references
 
 Parses a raw citation string into a structured `LawReference` object
@@ -85,6 +96,7 @@ str(para.sub_refs[1])     # → 'Nr. 1'
 ```
 
 
+<a id="data-model"></a>
 ## Data model
 
 Three dataclasses represent a parsed reference at increasing levels of specificity.
@@ -135,6 +147,7 @@ String representations:
 | Halbsatz | `Halbsatz 2`   |
 
 
+<a id="normalising-references"></a>
 ## Normalising references
 
 Available directly without loading any law data.
@@ -183,6 +196,7 @@ normalise('§ 312 ff. BGB', ff_expansion=5)
 ```
 
 
+<a id="what-the-normaliser-handles"></a>
 ## What the normaliser handles
 
 | Input form                        | Output                                     |
@@ -204,6 +218,7 @@ Ranges with letter suffixes (`§§ 12a-12c`) are left unchanged because
 intermediate values are not predictable.
 
 
+<a id="resolving-references"></a>
 ## Resolving references
 
 `Bundesrecht` is the dataset-backed entry point for resolving references.
@@ -320,6 +335,7 @@ lib.law_count   # → 6873
 ```
 
 
+<a id="corpus-cache"></a>
 ## Corpus cache
 
 The PyPI package ships code only. It does not bundle the full corpus and does
@@ -351,6 +367,7 @@ Local files are validated before loading. If a local file does not match the
 expected corpus shape, use `Bundesrecht()` to load the package-managed corpus.
 
 
+<a id="queryresult"></a>
 ## QueryResult
 
 Returned by `query()` and `query_canonical()`. One object per resolved reference.
@@ -439,6 +456,7 @@ str(r.resolved_para)   # → '433 Abs. 1'
 ```
 
 
+<a id="lawdata"></a>
 ## LawData
 
 Returned by `lib.get_law()` and available as `result.law_data`.
@@ -489,6 +507,7 @@ abs1 = bgb.get_absatz('433', '1')   # string also works
 ```
 
 
+<a id="resolved-depth-reference"></a>
 ## Resolved depth reference
 
 | `resolved_depth`   | Meaning                                                |
@@ -500,6 +519,7 @@ abs1 = bgb.get_absatz('433', '1')   # string also works
 | `'unterbuchstabe'` | Fully resolved to Unterbuchstabe level (`aa)`, `bb)`)  |
 
 
+<a id="complete-example"></a>
 ## Complete example
 
 ```python
@@ -540,6 +560,7 @@ lib.law_count             # → 6873
 ```
 
 
+<a id="citation"></a>
 ## Citation
 
 Please consider citing our [paper](https://arxiv.org/abs/2605.31338) when using the dataset:

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 78 24"
+     role="img"
+     aria-label="Note">
+  <circle cx="12" cy="12" r="7"
+          fill="none"
+          stroke="#0969da"
+          stroke-width="1.6"/>
+  <circle cx="12" cy="8.5" r="1.2"
+          fill="#0969da"/>
+  <rect x="11.15" y="10.5"
+        width="1.7"
+        height="6"
+        rx="0.6"
+        fill="#0969da"/>
+  <text x="25" y="11.5"
+        dominant-baseline="central"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+        font-size="16"
+        font-weight="600"
+        fill="#0969da">Note</text>
+</svg>
