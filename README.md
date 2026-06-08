@@ -38,7 +38,7 @@ pip install bundesrecht
 >   <img src="https://raw.githubusercontent.com/harshildarji/bundesrecht/main/assets/note.svg" alt="Note" width="78">
 > </p>
 > 
-> The library is split into two parts.
+> The library is split into two parts:
 > 
 > 1. `parse_reference()` and `normalise()` work completely offline with zero dependency on any dataset.
 > 2. To use the resolver, create a `Bundesrecht` instance. This corpus-backed entry point needs the structured corpus, which is downloaded automatically on first use.
