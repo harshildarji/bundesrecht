@@ -66,6 +66,52 @@ jobs:
       - name: Run tests
         run: pytest test_bundesrecht.py -q --jsonl gesetze.jsonl
 
+      - name: Rewrite README for PyPI
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+
+          tag = os.environ["RELEASE_TAG"]
+
+          with open("README.md", encoding="utf-8") as f:
+              readme = f.read()
+
+          note_block = (
+              "> <p>\n"
+              '>   <img src="https://raw.githubusercontent.com/harshildarji/'
+              f'bundesrecht/{tag}/assets/note.svg" alt="Note" width="78">\n'
+              "> </p>"
+          )
+          readme, replacements = re.subn(r"> \[!NOTE\]", note_block, readme)
+
+          if replacements != 1:
+              raise SystemExit(
+                  f"Expected exactly 1 [!NOTE] block, replaced {replacements!r}"
+              )
+
+          main_assets_url = (
+              "raw.githubusercontent.com/harshildarji/bundesrecht/main/assets/"
+          )
+          release_assets_url = (
+              f"raw.githubusercontent.com/harshildarji/bundesrecht/{tag}/assets/"
+          )
+          readme = readme.replace(main_assets_url, release_assets_url)
+
+          if "[!NOTE]" in readme:
+              raise SystemExit("README still contains [!NOTE] after rewrite")
+
+          if main_assets_url in readme:
+              raise SystemExit("README still contains main asset URLs after rewrite")
+
+          with open("README.md", "w", encoding="utf-8") as f:
+              f.write(readme)
+
+          print(f"README rewritten for PyPI, assets pinned to {tag!r}")
+          PY
+
       - name: Build distributions
         run: python -m build
 

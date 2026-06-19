@@ -34,9 +34,7 @@ pip install bundesrecht
 ## Quick start
 
 > 
-> <p>
->   <img src="https://raw.githubusercontent.com/harshildarji/bundesrecht/main/assets/note.svg" alt="Note" width="78">
-> </p>
+> [!NOTE]
 > 
 > The library is split into two parts:
 > 

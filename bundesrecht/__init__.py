@@ -138,4 +138,4 @@ __all__ = [
     "parse_reference",
 ]
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"

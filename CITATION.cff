@@ -13,8 +13,8 @@ authors:
       given-names: Gerard
 repository-code: "https://github.com/harshildarji/bundesrecht"
 url: "https://pypi.org/project/bundesrecht/"
-version: 0.1.1
-date-released: 2026-06-08
+version: 0.1.3
+date-released: 2026-06-19
 preferred-citation:
     type: article
     doi: "10.48550/arXiv.2605.31338"
