@@ -22,11 +22,13 @@ Output is written to `eval/evals/`:
 
 `RESULTS.md` is written to `eval/` and should be committed after each run.
 
+The external tool comparison is in [`compare/`](compare/). It imports this evaluator's dataset loader and scoring functions so both evaluations use the same 2,944 rows and metric definitions.
+
 ## Evaluation
 
 Five fields are evaluated independently: `Artikel`, `Absatz`, `Satz`, `Nummer`, `Buchstabe`.
 
-Empty gold = the field is genuinely absent from that reference (manually verified by annotators).
+An empty gold cell is scored as no annotated value for that field. Some citations contain an explicit field marker while the corresponding annotation cell is empty, so an empty cell does not prove that the field is absent from the citation text.
 
 ### MODE 1: Strict Exact Match
 

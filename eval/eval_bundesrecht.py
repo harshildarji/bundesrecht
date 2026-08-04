@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 # ensure the parser repo root is on the path when running from eval/
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
+FIELDS = ("Artikel", "Absatz", "Satz", "Nummer", "Buchstabe")
+
 
 # Dataset loading
 def _load_dataset() -> list[dict]:
@@ -158,32 +160,37 @@ class MicroResult:
         return 2 * p * r / (p + r) if (p + r) else 0.0
 
 
-# Parser + Normaliser evaluation
-def run_parser_evaluation(
+def score_predictions(
     rows: list[dict],
+    predictions: list[dict[str, set[str]]],
+    fields: tuple[str, ...] = FIELDS,
 ) -> tuple[dict[str, StrictResult], dict[str, MicroResult]]:
-    from bundesrecht import normalise, parse_reference
+    """Score field predictions with the published strict and micro definitions.
 
-    fields = ["Artikel", "Absatz", "Satz", "Nummer", "Buchstabe"]
+    Args:
+        rows: Annotation rows loaded by _load_dataset().
+        predictions: One field-to-value-set mapping per annotation row.
+        fields: Fields to score, in report order.
+
+    Returns:
+        Strict row-level results and element-level micro results by field.
+    """
+    if len(rows) != len(predictions):
+        raise ValueError("Rows and predictions must have the same length")
+
     strict: dict[str, StrictResult] = {f: StrictResult() for f in fields}
     micro: dict[str, MicroResult] = {f: MicroResult() for f in fields}
 
-    for row in rows:
+    for row, prediction in zip(rows, predictions, strict=True):
         raw = _gold(row, "Referenz")
         if not raw:
             continue
-
-        expanded = normalise(raw) or [raw]
-        parsed_refs = [parse_reference(r) for r in expanded]
 
         for f in fields:
             gold_set = _gold_set(
                 row, f, f + " "
             )  # "Buchstabe " has trailing space in dataset
-
-            extracted_set: set[str] = set()
-            for p in parsed_refs:
-                extracted_set |= _collect_field(p, f)
+            extracted_set = prediction.get(f, set())
 
             # MODE 1: strict exact match
             s = strict[f]
@@ -217,6 +224,28 @@ def run_parser_evaluation(
                     )
 
     return strict, micro
+
+
+def predict_bundesrecht_fields(raw: str) -> dict[str, set[str]]:
+    """Parse and normalise one reference into the five evaluated fields."""
+    from bundesrecht import normalise, parse_reference
+
+    expanded = normalise(raw) or [raw] if raw else []
+    parsed_refs = [parse_reference(ref) for ref in expanded]
+    return {
+        field_name: set().union(
+            *(_collect_field(parsed, field_name) for parsed in parsed_refs)
+        )
+        for field_name in FIELDS
+    }
+
+
+# Parser + Normaliser evaluation
+def run_parser_evaluation(
+    rows: list[dict],
+) -> tuple[dict[str, StrictResult], dict[str, MicroResult]]:
+    predictions = [predict_bundesrecht_fields(_gold(row, "Referenz")) for row in rows]
+    return score_predictions(rows, predictions)
 
 
 def _print_failure_analysis(micro: dict[str, MicroResult]) -> None:
