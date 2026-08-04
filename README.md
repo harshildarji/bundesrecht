@@ -469,7 +469,7 @@ bgb = lib.get_law('BGB')
 bgb.jurabk        # → 'BGB'          abbreviation
 bgb.gesetze_id    # → 'BGB::BJNR001950896'  internal corpus ID
 bgb.metadaten     # → dict            full metadata
-bgb.sections      # → dict            all sections keyed by paragraph string
+bgb.sections      # → list            all section dictionaries in corpus order
 bgb.fussnoten     # → list            footnotes at law level
 bgb.quelle        # → dict            source metadata
 ```
@@ -512,6 +512,7 @@ abs1 = bgb.get_absatz('433', '1')   # string also works
 | ------------------ | ------------------------------------------------------ |
 | `'section'`        | Only the paragraph was found (no sub-ref match)        |
 | `'absatz'`         | Absatz resolved, Nummer was not requested/found        |
+| `'satz'`           | Satz resolved, Nummer was not requested/found          |
 | `'nummer'`         | Nummer resolved, Buchstabe not requested/found         |
 | `'buchstabe'`      | Buchstabe resolved, Unterbuchstabe not requested/found |
 | `'unterbuchstabe'` | Fully resolved to Unterbuchstabe level (`aa)`, `bb)`)  |

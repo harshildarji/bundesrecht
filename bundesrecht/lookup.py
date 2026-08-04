@@ -19,7 +19,6 @@ from typing import Iterator, Optional, Union
 from bundesrecht.references import (
     LawReference,
     ParagraphRef,
-    SubReference,
     _expand_multi_target,
 )
 
@@ -36,7 +35,7 @@ class LawData:
         self.metadaten: dict = data.get("metadaten", {})
         self.fussnoten: list = data.get("fussnoten", [])
         self.quelle: dict = data.get("quelle", {})
-        self.sections: dict = data.get("sections", {})
+        self.sections: list[dict] | dict[str, dict] = data.get("sections", [])
         self._index: dict[str, dict] = {}
         self._key_map: dict[str, str] = {}
         # sections is a list of dicts with a "paragraf" key

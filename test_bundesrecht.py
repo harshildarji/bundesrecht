@@ -19,6 +19,12 @@ def lib(request):
     return Bundesrecht(request.config.getoption("--jsonl"))
 
 
+def test_law_data_defaults_sections_to_list():
+    law = LawData({})
+
+    assert law.sections == []
+
+
 def test_law_library_jurabk_takes_precedence_over_later_amtabk_alias(tmp_path):
     jsonl = tmp_path / "laws.jsonl"
     jsonl.write_text(
@@ -1154,9 +1160,7 @@ _HWG_11_LAW = LawData(
 )
 
 # Queryable wrapper around the synthetic LawData - constructs without file I/O
-from bundesrecht.lookup import LawLibrary as _LawLibrary
-
-_inner_lib = _LawLibrary.__new__(_LawLibrary)
+_inner_lib = LawLibrary.__new__(LawLibrary)
 _inner_lib._laws = {"HWG": _HWG_11_LAW}
 _HWG_LIB = Bundesrecht.__new__(Bundesrecht)
 _HWG_LIB._library = _inner_lib
@@ -1311,7 +1315,7 @@ def test_restarted_labels_satz_context_by_index_not_label():
             ],
         }
     )
-    inner = _LawLibrary.__new__(_LawLibrary)
+    inner = LawLibrary.__new__(LawLibrary)
     inner._laws = {"TESTSATZ": law_data}
     lib_ts = Bundesrecht.__new__(Bundesrecht)
     lib_ts._library = inner
@@ -1399,7 +1403,7 @@ _hwg_buchst_law = LawData(
         ],
     }
 )
-_hwg_buchst_inner = _LawLibrary.__new__(_LawLibrary)
+_hwg_buchst_inner = LawLibrary.__new__(LawLibrary)
 _hwg_buchst_inner._laws = {"HWGBUCHST": _hwg_buchst_law}
 _hwg_buchst_lib = Bundesrecht.__new__(Bundesrecht)
 _hwg_buchst_lib._library = _hwg_buchst_inner
@@ -1540,7 +1544,7 @@ _hwg_ubuch_law = LawData(
         ],
     }
 )
-_hwg_ubuch_inner = _LawLibrary.__new__(_LawLibrary)
+_hwg_ubuch_inner = LawLibrary.__new__(LawLibrary)
 _hwg_ubuch_inner._laws = {"HWGUBUCH": _hwg_ubuch_law}
 _hwg_ubuch_lib = Bundesrecht.__new__(Bundesrecht)
 _hwg_ubuch_lib._library = _hwg_ubuch_inner
