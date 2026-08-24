@@ -7,7 +7,7 @@ packages = ["bundesrecht"]
 
 [project]
 name = "bundesrecht"
-version = "0.1.3"
+version = "0.1.4"
 description = "Structured parsing, normalisation, and resolution of German federal law references"
 readme = "README.md"
 requires-python = ">=3.10"

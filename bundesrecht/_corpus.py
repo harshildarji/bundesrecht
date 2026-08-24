@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 HF_DATASET_REPO = "harshildarji/bundesrecht"
 DATA_FILENAME = "gesetze.jsonl"
 
-DEFAULT_DATA_COMMIT = "87f29766131210d44f6f701f701ae5b9d382e3e4"
+DEFAULT_DATA_COMMIT = "fa92f69787f31620f37ce10409feae9034b5a3a5"
 _COMMIT_HASH_RE = re.compile(r"^[0-9a-f]{40}$")
 
 

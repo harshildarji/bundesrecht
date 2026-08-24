@@ -16,11 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, Union
 
-from bundesrecht.references import (
-    LawReference,
-    ParagraphRef,
-    _expand_multi_target,
-)
+from bundesrecht.references import LawReference, ParagraphRef, _expand_multi_target
 
 
 class LawData:
